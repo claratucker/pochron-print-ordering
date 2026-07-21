@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pochron Studios · Pricing admin</title>
+<style>
+  :root{--paper:#fff;--paper2:#FAF9FB;--ink:#534270;--soft:#6B5D83;--line:#E7E3EC;--petrol:#6E5B8F;--ok:#3f6f4a;--warn:#9a6a2a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper2);color:var(--ink);font:14px/1.5 "Proxima Nova","Mulish",system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  header{background:var(--paper);border-bottom:1px solid var(--line);padding:18px 24px;display:flex;align-items:center;gap:16px;justify-content:space-between}
+  h1{font-size:16px;letter-spacing:.14em;text-transform:uppercase;margin:0;color:var(--petrol)}
+  main{max-width:920px;margin:0 auto;padding:24px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:20px;margin-bottom:20px}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:0 0 14px}
+  table{border-collapse:collapse;width:100%}
+  th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px}
+  th{color:var(--soft);font-weight:600}
+  input{font:inherit;border:1px solid var(--line);background:var(--paper2);border-radius:2px;padding:5px 7px;width:90px;color:var(--ink)}
+  input.wide{width:220px}
+  button{font:inherit;cursor:pointer;border:1px solid var(--petrol);background:var(--petrol);color:#fff;border-radius:3px;padding:8px 16px;letter-spacing:.02em}
+  button.ghost{background:transparent;color:var(--petrol)}
+  .gate{max-width:360px;margin:80px auto;text-align:center}
+  .gate input{width:100%;margin:10px 0;padding:10px}
+  .msg{margin-left:12px;font-size:13px}
+  .ok{color:var(--ok)} .bad{color:#a24941}
+  .muted{color:var(--soft);font-size:12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}
+</style>
+</head>
+<body>
+<div id="gate" class="gate card">
+  <h1>Pricing admin</h1>
+  <p class="muted">Enter the admin password to edit the catalog.</p>
+  <input type="password" id="pw" placeholder="Admin password" autocomplete="current-password">
+  <button id="enter">Unlock</button>
+  <div id="gateMsg" class="msg"></div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <h1>Pochron Studios · Pricing</h1>
+    <div><button id="save">Save changes</button><span id="saveMsg" class="msg"></span></div>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Per-size prices</h2>
+      <p class="muted">The real, current prices. Editing here updates what the ordering tool charges — no developer needed.</p>
+      <div id="priceTables"></div>
+    </div>
+    <div class="card">
+      <h2>Shipping methods</h2>
+      <table><thead><tr><th>Label</th><th>Cost</th></tr></thead><tbody id="shipBody"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Volume tiers</h2>
+      <p class="muted">Discount by total print count. Leave rate blank for “contact us” (manual quote).</p>
+      <table><thead><tr><th>Min qty</th><th>Rate (0–1)</th><th>Label</th></tr></thead><tbody id="volBody"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="cols" id="settings"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+let PW = '';
+const $ = (id) => document.getElementById(id);
+const H = () => ({ 'Content-Type': 'application/json', 'X-Studio-Password': PW });
+
+$('enter').onclick = async () => {
+  PW = $('pw').value;
+  const r = await fetch('/api/admin/catalog', { headers: H() });
+  if (!r.ok) { $('gateMsg').innerHTML = '<span class="bad">Wrong password.</span>'; return; }
+  $('gate').style.display = 'none'; $('app').style.display = 'block';
+  render(await r.json());
+};
+
+let cat;
+function render(c) {
+  cat = c;
+  // price tables per family
+  const fams = [...new Set(c.papers.map(p => p.fam))];
+  $('priceTables').innerHTML = fams.map(fam => {
+    const rows = c.sizes.map(s => `<tr><td>${s}</td><td>$<input data-fam="${fam}" data-size="${s}" value="${(c.prices[fam]?.[s] ?? '').toFixed ? c.prices[fam][s].toFixed(2) : (c.prices[fam]?.[s] ?? '')}"></td></tr>`).join('');
+    const label = fam === 'cprint' ? 'Chromogenic (Fuji Crystal Archive)' : 'Archival Pigment';
+    return `<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)">${label}</h3><table><thead><tr><th>Size (in)</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join('<div style="height:14px"></div>');
+
+  $('shipBody').innerHTML = c.shipping.map(m =>
+    `<tr><td><input class="wide" data-ship="${m.id}" data-k="label" value="${m.label}"></td><td>$<input data-ship="${m.id}" data-k="cost" value="${m.cost}"></td></tr>`).join('');
+
+  $('volBody').innerHTML = c.volume.map(v =>
+    `<tr><td>${v.min}</td><td><input data-vol="${v.min}" data-k="rate" value="${v.rate ?? ''}"></td><td><input class="wide" data-vol="${v.min}" data-k="label" value="${v.label}"></td></tr>`).join('');
+
+  const SETTING_LABELS = {
+    cc_add: 'Hand Color Correction fee ($ per image)',
+    dpi_good: 'Good DPI (no warning above this)',
+    dpi_min: 'Minimum DPI (warn below this)',
+    px_per_in: 'Preview pixels per inch',
+  };
+  const s = { cc_add: c.ccAdd, dpi_good: c.dpiGood, dpi_min: c.dpiMin, px_per_in: c.pxPerIn };
+  $('settings').innerHTML = Object.entries(s).map(([k, v]) =>
+    `<label>${SETTING_LABELS[k] || k}<br><input data-set="${k}" value="${v}"></label>`).join('');
+}
+
+$('save').onclick = async () => {
+  const prices = {};
+  document.querySelectorAll('[data-fam]').forEach(i => {
+    const v = parseFloat(i.value); if (!isNaN(v)) (prices[i.dataset.fam] ||= {})[i.dataset.size] = v;
+  });
+  const shipMap = {};
+  document.querySelectorAll('[data-ship]').forEach(i => {
+    (shipMap[i.dataset.ship] ||= { id: i.dataset.ship })[i.dataset.k] = i.dataset.k === 'cost' ? parseFloat(i.value) : i.value;
+  });
+  const volMap = {};
+  document.querySelectorAll('[data-vol]').forEach(i => {
+    const m = (volMap[i.dataset.vol] ||= { min: +i.dataset.vol });
+    m[i.dataset.k] = i.dataset.k === 'rate' ? (i.value.trim() === '' ? null : parseFloat(i.value)) : i.value;
+  });
+  const settings = {};
+  document.querySelectorAll('[data-set]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v)) settings[i.dataset.set] = v; });
+
+  const body = { prices, shipping: Object.values(shipMap), volume: Object.values(volMap), settings };
+  const r = await fetch('/api/admin/catalog', { method: 'PUT', headers: H(), body: JSON.stringify(body) });
+  $('saveMsg').innerHTML = r.ok ? '<span class="ok">Saved.</span>' : '<span class="bad">Save failed.</span>';
+  if (r.ok) render((await r.json()).catalog);
+  setTimeout(() => $('saveMsg').textContent = '', 2500);
+};
+</script>
+</body>
+</html>
