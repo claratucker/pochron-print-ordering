@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pochron Studios — Self-edit (Filerobot) demo</title>
+<script src="https://scaleflex.cloudimg.io/v7/plugins/filerobot-image-editor/latest/filerobot-image-editor.min.js"></script>
+<style>
+  :root{--paper:#fff;--paper2:#FAF9FB;--paper3:#F4F1F7;--ink:#534270;--soft:#6B5D83;
+    --line:#E7E3EC;--petrol:#6E5B8F;--self:#8a5a1f;--self-bg:#f6efe6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper2);color:var(--ink);
+    font:15px/1.6 "Proxima Nova","Mulish",system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  header{background:var(--paper);border-bottom:1px solid var(--line);padding:16px 24px}
+  h1{font-size:15px;letter-spacing:.16em;text-transform:uppercase;margin:0;color:var(--petrol)}
+  main{max-width:760px;margin:0 auto;padding:28px 20px 80px}
+  .lead{color:var(--soft);font-size:14px;margin:0 0 22px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:20px;margin-bottom:20px}
+  h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:0 0 14px}
+  label{font-size:13px;color:var(--soft);display:block;margin-bottom:6px}
+  select,button{font:inherit}
+  select{border:1px solid var(--line);background:var(--paper2);border-radius:3px;padding:8px 10px;color:var(--ink);margin-bottom:16px}
+  button{cursor:pointer;border:1px solid var(--petrol);background:var(--petrol);color:#fff;
+    border-radius:3px;padding:10px 18px;letter-spacing:.02em}
+  button.ghost{background:transparent;color:var(--petrol)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .preview{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap}
+  .preview img{max-width:260px;border:1px solid var(--line);border-radius:3px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    background:var(--self-bg);color:var(--self);border:1px solid #e3d2b8;border-radius:3px;padding:3px 8px;margin-bottom:10px}
+  pre{background:#1b1622;color:#e6e0ef;border-radius:4px;padding:14px 16px;font-size:12.5px;
+    line-height:1.55;overflow:auto;margin:0}
+  .muted{color:var(--soft);font-size:12.5px;margin-top:10px}
+  .empty{color:var(--soft);font-size:13px}
+  code{background:var(--paper3);padding:1px 5px;border-radius:3px;font-size:12.5px}
+</style>
+</head>
+<body>
+<header><h1>Self-edit demo</h1></header>
+<main>
+  <p class="lead">This is the customer-facing editor slot. <span class="tag">Filerobot</span>
+    A customer crops and adjusts their photo here; on save we capture the edit as a
+    small <em>recipe</em> and keep it with their original. At approval the studio
+    re-applies that recipe to the full-resolution original — the print never comes
+    from this in-browser preview.</p>
+
+  <div class="card">
+    <h2>1 · Choose a print size &amp; open the editor</h2>
+    <div class="row">
+      <div>
+        <label for="ratio">Print size (locks the crop ratio)</label>
+        <select id="ratio">
+          <option value="0.8">8 × 10</option>
+          <option value="0.7857">11 × 14</option>
+          <option value="1">Square (e.g. 8 × 8)</option>
+          <option value="1.5">6 × 4</option>
+          <option value="">Free crop</option>
+        </select>
+      </div>
+      <button id="open">Open editor</button>
+    </div>
+    <p class="muted">Uses a sample image. In the live flow the source is the customer's uploaded original.</p>
+  </div>
+
+  <div class="card">
+    <h2>2 · The recipe we store &amp; send to the backend</h2>
+    <div id="out"><p class="empty">Edit and hit <strong>Save</strong> in the editor to see the recipe.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>How this attaches to an order</h2>
+    <p class="muted" style="margin-top:0">On save, the order item is sent with
+      <code>colorPath: "self"</code> and this recipe as its <code>adjust</code> field.
+      The studio queue then shows a <strong>Customer self-edit</strong> badge, and
+      approving the photo calls the render endpoint that produces the print-ready
+      file from the original + recipe.</p>
+  </div>
+</main>
+
+<script type="module">
+import { openAdjustEditor } from './filerobot-adjust.js';
+
+const SAMPLE = 'https://scaleflex.airstore.io/demo/stephen-walker-unsplash.jpg';
+const out = document.getElementById('out');
+
+document.getElementById('open').addEventListener('click', () => {
+  const ratioVal = document.getElementById('ratio').value;
+  const ratio = ratioVal ? Number(ratioVal) : undefined;
+  try {
+    openAdjustEditor({
+      source: SAMPLE,
+      ratio,
+      onApply: (recipe, edited) => {
+        const orderItem = {
+          fileId: '«uploaded-file-id»', paper: 'cp-matte', size: '8×10',
+          qty: 1, colorPath: 'self', adjust: recipe,
+        };
+        out.innerHTML = `
+          <div class="preview">
+            <div>
+              <label>Editor preview (not printed)</label>
+              <img src="${edited?.imageBase64 || ''}" alt="edited preview" />
+            </div>
+            <div style="flex:1;min-width:260px">
+              <label>Recipe → order item <code>adjust</code></label>
+              <pre>${escapeHtml(JSON.stringify(orderItem, null, 2))}</pre>
+            </div>
+          </div>
+          <p class="muted">This exact object posts to <code>/api/orders</code>. The
+          studio re-renders it from the original at approval.</p>`;
+      },
+    });
+  } catch (e) {
+    out.innerHTML = `<p class="empty">${escapeHtml(e.message)} — is the Filerobot script blocked?</p>`;
+  }
+});
+
+function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+</script>
+</body>
+</html>
