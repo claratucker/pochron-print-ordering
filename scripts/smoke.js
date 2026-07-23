@@ -81,6 +81,7 @@ async function main() {
     contact: { name: 'M. Alvarez', email: 'm.alvarez@example.com' },
     shipping: { addr1: '20 Jay St', city: 'Brooklyn', state: 'NY', zip: '11201', method: 'standard' },
     whiteLabel: true,
+    whiteLabelName: 'Alvarez Studio',
   }});
   assert('order created (201)', place.status === 201, JSON.stringify(place.json));
   assert('has PS- ref', /^PS-/.test(place.json.ref || ''), place.json.ref);
@@ -114,6 +115,38 @@ async function main() {
   const approve = await api(`/api/studio/orders/${target.id}/approve`, { method: 'POST', studio: true, body: {} });
   assert('approve captures payment', approve.status === 200 && approve.json.captured === 54.85, JSON.stringify(approve.json));
   assert('order moves to production', approve.json.status === 'in_production', approve.json.status);
+
+  console.log('\nEmail typo protection (§8)');
+  COOKIE = '';
+  const emFile = await uploadImage('em.png', 2400, 3000);
+  const emBody = (email, extra = {}) => ({
+    items: [{ fileId: emFile.fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 1, colorPath: 'none' }],
+    contact: { name: 'C T', email },
+    shipping: { addr1: '1 A St', city: 'Brooklyn', state: 'NY', zip: '11201', method: 'standard' },
+    ...extra,
+  });
+  const typo = await api('/api/orders', { method: 'POST', body: emBody('clarac.tucker@gmial.com') });
+  assert('mistyped domain is caught before submit',
+    typo.status === 422 && typo.json.code === 'EMAIL_TYPO_SUSPECTED' && typo.json.suggestion === 'clarac.tucker@gmail.com',
+    JSON.stringify(typo.json));
+  const confirmed = await api('/api/orders', { method: 'POST', body: emBody('clarac.tucker@gmial.com', { emailConfirmed: true }) });
+  assert('customer can confirm and proceed anyway', confirmed.status === 201);
+  COOKIE = '';
+  const bizFile = await uploadImage('biz.png', 2400, 3000);
+  const biz = await api('/api/orders', { method: 'POST', body: {
+    items: [{ fileId: bizFile.fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 1, colorPath: 'none' }],
+    contact: { name: 'Ana', email: 'ana@ana-ruiz-photography.com' },
+    shipping: { addr1: '1 A St', city: 'Brooklyn', state: 'NY', zip: '11201', method: 'standard' },
+  }});
+  assert("a real business domain isn't false-flagged", biz.status === 201, JSON.stringify(biz.json).slice(0, 90));
+
+  console.log('\nWhite-label packaging (§10)');
+  const wlQueue = await api('/api/studio/queue', { studio: true });
+  const wlOrder = wlQueue.json.queue.find((o) => o.ref === ref);
+  assert('white-label order stores the sender business name', wlOrder?.whiteLabelName === 'Alvarez Studio', wlOrder?.whiteLabelName);
+  assert('parcel ships under the customer name, not Pochron',
+    wlOrder?.returnAddress?.startsWith('Alvarez Studio') && !wlOrder.returnAddress.includes('Pochron'),
+    JSON.stringify(wlOrder?.returnAddress));
 
   console.log('\nStudio auth required');
   const noauth = await api('/api/studio/queue');

@@ -38,7 +38,9 @@ Verify it's up: `curl localhost:4000/api/health` reports which adapters are live
 
 Once running, the app serves three browser surfaces:
 
-- **`/order/edit-demo.html`** — the customer self-edit step, using the
+- **`/order/mockupV4.html`** — the customer ordering app: upload, size/paper,
+  self-edit, checkout. Wired to the API (live prices, real uploads, real orders).
+- **`/order/edit-demo.html`** — a minimal standalone demo of just the self-edit step, using the
   [Filerobot Image Editor](https://github.com/scaleflex/filerobot-image-editor).
   The customer crops and adjusts their photo; the edit is captured as a small
   recipe and kept with their original.

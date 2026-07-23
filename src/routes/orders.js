@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { config } from '../config.js';
 import { loadCatalog } from '../lib/catalog.js';
+import { suggestEmailFix, verifyEmail } from '../lib/emailcheck.js';
 import { priceOrder, finalizeTotals, PriceError } from '../lib/pricing.js';
 import { tax } from '../adapters/misc.js';
 import { payment } from '../adapters/payment.js';
@@ -63,6 +64,8 @@ const OrderSchema = z.object({
     method: z.string(),
   }),
   whiteLabel: z.boolean().default(false),
+  whiteLabelName: z.string().trim().min(1).max(120).optional(),
+  emailConfirmed: z.boolean().default(false),   // customer kept their address after a typo warning
   lowResAck: z.boolean().default(false),
   paymentMethodId: z.string().optional(),   // Stripe pm_... (production)
 });
@@ -73,11 +76,39 @@ ordersRouter.post('/', async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: 'Please complete the required fields.', details: parsed.error.flatten() });
   }
-  const { items, contact, shipping, whiteLabel, lowResAck, paymentMethodId } = parsed.data;
+  const { items, contact, shipping, whiteLabel, whiteLabelName, lowResAck, emailConfirmed, paymentMethodId } = parsed.data;
 
   // Email format gate (layer 1 of §8; verification API + confirmation email are the stronger layers).
   if (!EMAIL_RE.test(contact.email)) {
     return res.status(400).json({ error: "That email address doesn't look right. Please double-check it.", field: 'email' });
+  }
+
+  // Layer 2 — typo suggestion. A wrong address is silent and costly, so a
+  // near-miss on a common domain is surfaced once; the customer can confirm
+  // their address is right and continue.
+  if (!emailConfirmed) {
+    const suggestion = suggestEmailFix(contact.email);
+    if (suggestion) {
+      return res.status(422).json({
+        error: `Did you mean ${suggestion}?`,
+        code: 'EMAIL_TYPO_SUSPECTED',
+        field: 'email',
+        suggestion,
+      });
+    }
+  }
+
+  // Layer 3 — mailbox verification. Only a confirmed-undeliverable address
+  // blocks; 'unknown' (no provider configured, or a provider outage) never does.
+  if (!emailConfirmed) {
+    const verdict = await verifyEmail(contact.email);
+    if (verdict === 'undeliverable') {
+      return res.status(422).json({
+        error: "We couldn't deliver mail to that address. Please check it — we send your order updates there.",
+        code: 'EMAIL_UNDELIVERABLE',
+        field: 'email',
+      });
+    }
   }
 
   // Load the real files + recompute the price SERVER-SIDE. The client total is never trusted.
@@ -88,6 +119,16 @@ ordersRouter.post('/', async (req, res) => {
   const foundIds = new Set(files.map((f) => f.id));
   const missing = fileIds.filter((id) => !foundIds.has(id));
   if (missing.length) return res.status(409).json({ error: 'Some uploads are missing or not yet validated.', missing });
+
+  // White-label parcels ship under the customer's own business name (§10), so
+  // that name is required whenever the flag is set — there's nothing to print
+  // on the label otherwise.
+  if (whiteLabel && !(whiteLabelName && whiteLabelName.trim())) {
+    return res.status(422).json({
+      error: 'For white-label packaging, tell us the business name to show as the sender.',
+      code: 'NEEDS_WHITE_LABEL_NAME',
+    });
+  }
 
   let quote;
   try {
@@ -122,8 +163,13 @@ ordersRouter.post('/', async (req, res) => {
   try {
     auth = await payment.authorize({ amount: quote.total, email: contact.email, orderRef: ref, paymentMethodId });
   } catch (e) {
-    return res.status(402).json({ error: 'Payment could not be authorized.', detail: e.message });
+    return res.status(402).json({ error: 'Your card could not be authorized.', detail: e.message });
   }
+
+  // A bank may require 3D Secure. The order is still created (below) so the
+  // customer never loses their work; the browser finishes the challenge and
+  // calls /api/orders/:ref/payment-status to confirm the authorization.
+  const needsAction = auth.status === 'requires_action' || auth.status === 'requires_confirmation';
 
   // Persist order + items atomically, then map file metadata onto each line.
   const fileById = Object.fromEntries(files.map((f) => [f.id, f]));
@@ -132,14 +178,14 @@ ordersRouter.post('/', async (req, res) => {
       `INSERT INTO orders
         (ref,status,customer_name,email,phone,
          ship_name,ship_addr1,ship_addr2,ship_city,ship_state,ship_zip,ship_country,ship_method,
-         white_label,low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,total,
+         white_label,white_label_name,low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,total,
          payment_ref,payment_status)
-       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?, ?,?,?,?,?,?, ?,?)`
+       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?,?, ?,?,?,?,?,?, ?,?)`
     ).run(
       ref, contact.name, contact.email, contact.phone || null,
       shipping.name || contact.name, shipping.addr1, shipping.addr2 || null,
       shipping.city, shipping.state, shipping.zip, shipping.country || 'United States', shipping.method,
-      whiteLabel ? 1 : 0, lowResAck ? 1 : 0,
+      whiteLabel ? 1 : 0, whiteLabel ? (whiteLabelName || null) : null, lowResAck ? 1 : 0,
       quote.subtotal, quote.discountRate, quote.discountAmount, quote.shippingCost, quote.tax, quote.total,
       auth.paymentRef, auth.status === 'authorized' || auth.status === 'requires_capture' ? 'authorized' : auth.status
     );
@@ -181,6 +227,7 @@ ordersRouter.post('/', async (req, res) => {
     ref, orderId, status: 'submitted',
     total: quote.total, paymentStatus: 'authorized',
     message: 'Order received. We emailed a copy to ' + contact.email + '.',
+    ...(needsAction ? { requiresAction: true, clientSecret: auth.clientSecret, code: 'REQUIRES_3DS' } : {}),
   });
 });
 
@@ -193,6 +240,27 @@ ordersRouter.get('/:ref', (req, res) => {
     return res.status(403).json({ error: 'Provide the email on the order to view it.' });
   }
   res.json(publicView(order));
+});
+
+// POST /api/orders/:ref/payment-status — re-check the authorization after the
+// customer completes a 3D Secure challenge in the browser, and record the
+// result. Guarded by the order email like the status lookup.
+ordersRouter.post('/:ref/payment-status', async (req, res) => {
+  const order = getOrderByRef(req.params.ref);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email || email !== String(order.email).toLowerCase()) {
+    return res.status(403).json({ error: 'Order lookup requires the email on the order.' });
+  }
+  if (!order.payment_ref) return res.status(409).json({ error: 'No payment on this order.' });
+  try {
+    const s = await payment.status({ paymentRef: order.payment_ref });
+    const status = s.status === 'authorized' ? 'authorized' : s.status;
+    db.prepare('UPDATE orders SET payment_status=? WHERE id=?').run(status, order.id);
+    res.json({ ref: order.ref, paymentStatus: status, authorized: status === 'authorized' });
+  } catch (e) {
+    res.status(502).json({ error: 'Could not check the payment.', detail: e.message });
+  }
 });
 
 function publicView(o) {

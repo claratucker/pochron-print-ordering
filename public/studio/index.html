@@ -232,7 +232,7 @@ function orderCard(o){
     <div class="ohead">
       <span class="ref">${esc(o.ref)}</span>
       <span class="badge b-${o.status}">${esc(statusLabel(o.status))}</span>
-      ${o.whiteLabel ? '<span class="badge b-wl">White-label</span>' : ''}
+      ${o.whiteLabel ? '<span class="badge b-wl">White-label · neutral label, no inserts</span>' : ''}
       <div class="who">${esc(o.who)} <span class="em">· ${esc(o.email)}</span></div>
       <div class="grow"></div>
       <span class="tot">${money(o.total)}</span>
@@ -280,6 +280,7 @@ function actionsBlock(o){
       <div class="holdrow"><button class="ghost hold">Hold &amp; message</button></div>
     </div>
     <div class="note">Approving captures payment for the selected photos. Unchecked photos stay on hold for a partial capture.</div>
+    <div class="note" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace">Return address for this parcel:<br>${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
 function shipOnlyBlock(o){
@@ -290,6 +291,7 @@ function shipOnlyBlock(o){
       <button class="ship">Mark shipped</button>
     </div>
     <div class="note">Notifies the customer that ${esc(o.ref)} is on its way.</div>
+    <div class="note" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace">Return address for this parcel:<br>${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
 

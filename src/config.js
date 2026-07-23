@@ -44,7 +44,25 @@ export const config = {
   payment: {
     driver: process.env.PAYMENT_DRIVER || 'mock',
     stripeSecret: process.env.STRIPE_SECRET_KEY,
+    stripePublishable: process.env.STRIPE_PUBLISHABLE_KEY,   // safe to send to the browser
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+  },
+
+  // Fulfillment / packaging (§10). White-label orders ship with a neutral return
+  // address and no studio branding or inserts.
+  fulfillment: {
+    studioReturnAddress: process.env.STUDIO_RETURN_ADDRESS
+      || 'Pochron Studios\n117 9th Street, Rm #210\nBrooklyn, NY 11215',
+    // White-label parcels ship from the same place but under the CUSTOMER's
+    // own business name, so only the street portion is configured here.
+    dropAddress: process.env.DROP_ADDRESS
+      || '117 9th Street, Rm #210\nBrooklyn, NY 11215',
+  },
+
+  // Email verification (§8 layer 3). none | kickbox | zerobounce
+  emailVerify: {
+    driver: process.env.EMAIL_VERIFY_DRIVER || 'none',
+    apiKey: process.env.EMAIL_VERIFY_API_KEY,
   },
 
   email: {

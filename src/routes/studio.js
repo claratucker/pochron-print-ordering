@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
+import { config } from '../config.js';
 import { requireStudio } from '../lib/auth.js';
 import { payment } from '../adapters/payment.js';
 import { emails } from '../adapters/email.js';
@@ -32,7 +33,7 @@ studioRouter.use(requireStudio);   // every studio route is authenticated
 // GET /api/studio/queue — orders awaiting proof, plus recent history.
 studioRouter.get('/queue', (req, res) => {
   const rows = db.prepare(
-    `SELECT id, ref, status, customer_name, email, white_label, total, created_at
+    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, total, created_at
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
   const pending = rows.filter((o) => o.status === 'submitted' || o.status === 'on_hold').length;
@@ -41,6 +42,13 @@ studioRouter.get('/queue', (req, res) => {
     return {
       id: o.id, ref: o.ref, status: o.status, who: o.customer_name, email: o.email,
       whiteLabel: !!o.white_label, total: o.total, createdAt: o.created_at,
+      // The address that goes on the parcel: neutral for white-label (§10).
+      whiteLabelName: o.white_label_name || null,
+      // White-label parcels ship under the CUSTOMER's business name at the
+      // studio's drop address — no Pochron branding (§10).
+      returnAddress: o.white_label
+        ? `${o.white_label_name || 'Sender'}\n${config.fulfillment.dropAddress}`
+        : config.fulfillment.studioReturnAddress,
       items: full.items.map((i) => ({
         id: i.id, name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,
         colorPath: i.color_path,               // none | studio | self
@@ -73,7 +81,9 @@ const ApproveSchema = z.object({ itemIds: z.array(z.number()).optional() });
 studioRouter.post('/orders/:id/approve', async (req, res) => {
   const order = getOrder(+req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
-  const { itemIds } = ApproveSchema.parse(req.body || {});
+  const ap = ApproveSchema.safeParse(req.body || {});
+  if (!ap.success) return res.status(400).json({ error: 'Invalid approval request.', details: ap.error.flatten() });
+  const { itemIds } = ap.data;
 
   const approving = itemIds?.length ? order.items.filter((i) => itemIds.includes(i.id)) : order.items;
   if (!approving.length) return res.status(400).json({ error: 'No matching items to approve.' });
@@ -148,7 +158,9 @@ const HoldSchema = z.object({ message: z.string().min(1) });
 studioRouter.post('/orders/:id/hold', async (req, res) => {
   const order = getOrder(+req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
-  const { message } = HoldSchema.parse(req.body);
+  const parsed = HoldSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Write a message for the customer before placing the order on hold.' });
+  const { message } = parsed.data;
 
   addMessage(order.id, 'studio_to_customer', message);
   transition(order.id, 'on_hold', 'Studio messaged customer');
@@ -161,7 +173,9 @@ const ShipSchema = z.object({ tracking: z.string().optional() });
 studioRouter.post('/orders/:id/ship', async (req, res) => {
   const order = getOrder(+req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
-  const { tracking } = ShipSchema.parse(req.body || {});
+  const sp = ShipSchema.safeParse(req.body || {});
+  if (!sp.success) return res.status(400).json({ error: 'Invalid ship request.', details: sp.error.flatten() });
+  const { tracking } = sp.data;
   db.prepare(`UPDATE orders SET tracking=?, updated_at=datetime('now') WHERE id=?`).run(tracking || null, order.id);
   transition(order.id, 'shipped', tracking ? `Shipped: ${tracking}` : 'Shipped');
   try { await emails.shipped(getOrder(order.id), tracking); } catch (e) { console.error('Shipped email failed:', e.message); }

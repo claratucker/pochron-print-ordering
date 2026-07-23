@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS orders (
   customer_name TEXT, email TEXT, phone TEXT,
   ship_name TEXT, ship_addr1 TEXT, ship_addr2 TEXT,
   ship_city TEXT, ship_state TEXT, ship_zip TEXT, ship_country TEXT,
-  ship_method TEXT, white_label INTEGER DEFAULT 0,
+  ship_method TEXT, white_label INTEGER DEFAULT 0, white_label_name TEXT,
   low_res_ack INTEGER DEFAULT 0,
   subtotal REAL, discount_rate REAL, discount_amount REAL,
   shipping_cost REAL, tax REAL, total REAL,
@@ -125,5 +125,6 @@ function ensureColumn(table, column, decl) {
 }
 ensureColumn('order_items', 'print_file_key', 'TEXT');
 ensureColumn('files', 'multipart_upload_id', 'TEXT');
+ensureColumn('orders', 'white_label_name', 'TEXT');
 
 export { DATA_DIR };

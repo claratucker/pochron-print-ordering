@@ -10,6 +10,7 @@ export const catalogRouter = Router();
 catalogRouter.get('/', (req, res) => {
   const c = loadCatalog();
   res.json({
+    payment: { driver: config.payment.driver, publishableKey: config.payment.stripePublishable || null },
     papers: c.papers,
     sizes: c.sizes,
     prices: c.prices,
