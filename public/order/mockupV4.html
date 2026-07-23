@@ -245,10 +245,8 @@
       <p class="step-sub">Upload up to 12 images. Every file is reviewed before printing. We'll flag anything too small for the size you choose.</p>
       <div class="sources" id="sources">
         <button class="src" data-src="upload" aria-pressed="true">Upload</button>
-        <button class="src" data-src="google">Google Photos</button>
-        <button class="src" data-src="flickr">Flickr</button>
-        <button class="src" data-src="dropbox">Dropbox</button>
-        <button class="src" data-src="lightroom">Lightroom</button>
+        <!-- Connector buttons are rendered from /api/uploads/sources so the page
+             can never offer a source that isn't enabled and configured. -->
       </div>
       <div id="uploadArea">
         <label class="dropzone" id="dropzone" style="display:block; cursor:pointer">
@@ -392,6 +390,8 @@
   </footer>
 
 <script src="https://js.stripe.com/v3/"></script>
+<!-- Dropbox Chooser; the app key is injected at runtime from /api/uploads/sources -->
+<script id="dropboxjs" src="https://www.dropbox.com/static/api/2/dropins.js"></script>
 <!-- real in-browser editor (Filerobot Image Editor) -->
 <script src="https://scaleflex.cloudimg.io/v7/plugins/filerobot-image-editor/latest/filerobot-image-editor.min.js"></script>
 <script>
@@ -708,13 +708,93 @@ function refreshDpiGates(){
 }
 
 /* ---- step 1 ---- */
-$("sources").querySelectorAll(".src").forEach(b=>b.onclick=()=>{
+/* ===== Photo sources =====
+   Only sources the server says are enabled AND configured are shown. Pochron
+   offers original-quality sources only, so a customer is never given a button
+   that returns a re-compressed file. */
+let SOURCES=[], DROPBOX_KEY=null;
+async function loadSources(){
+  try{
+    const {ok,j}=await apiReq("/uploads/sources");
+    if(!ok)return;
+    SOURCES=j.sources||[]; DROPBOX_KEY=j.dropboxAppKey||null;
+    if(DROPBOX_KEY){
+      const tag=document.getElementById("dropboxjs");
+      if(tag)tag.setAttribute("data-app-key",DROPBOX_KEY);
+    }
+    renderSourceButtons();
+  }catch(e){/* upload still works without connectors */}
+}
+function renderSourceButtons(){
+  const bar=$("sources");
+  bar.querySelectorAll('.src:not([data-src="upload"])').forEach(b=>b.remove());
+  SOURCES.forEach(src=>{
+    const b=document.createElement("button");
+    b.className="src"; b.dataset.src=src.id; b.textContent=src.label;
+    b.title=src.qualityNote||"";
+    bar.appendChild(b);
+  });
+  bar.querySelectorAll(".src").forEach(b=>b.onclick=()=>onSourceClick(b));
+}
+function onSourceClick(b){
   $("sources").querySelectorAll(".src").forEach(x=>x.setAttribute("aria-pressed",x===b));
-  const up=b.dataset.src==="upload";
+  const id=b.dataset.src, up=id==="upload";
   $("uploadArea").classList.toggle("hidden",!up);
   $("connectArea").classList.toggle("hidden",up);
-  if(!up)$("connectArea").innerHTML=`<b>Connect ${b.textContent}.</b> In the live site this opens a secure ${b.textContent} sign-in to pick photos.`;
-});
+  if(up)return;
+  if(id==="dropbox")return openDropbox(b);
+  const src=SOURCES.find(s=>s.id===id);
+  $("connectArea").innerHTML=`<b>${b.textContent}</b> isn't connected yet. `+
+    `For now, export your file and upload it directly \u2014 that always preserves the original.`;
+}
+
+/* Dropbox Chooser. linkType 'direct' returns the stored bytes unmodified, which
+   is why Dropbox is an original-quality source. The link expires in 4 hours; the
+   server fetches it immediately. */
+function openDropbox(btn){
+  if(!window.Dropbox||!DROPBOX_KEY){
+    $("connectArea").innerHTML="<b>Dropbox isn't available right now.</b> Please upload your file directly.";
+    return;
+  }
+  const slots=MAX_FILES-state.photos.length;
+  if(slots<=0){$("connectArea").innerHTML=`<b>You've reached ${MAX_FILES} photos.</b>`;return;}
+  $("connectArea").innerHTML="<b>Opening Dropbox\u2026</b>";
+  window.Dropbox.choose({
+    linkType:"direct",
+    multiselect:true,
+    extensions:[".jpg",".jpeg",".png",".tif",".tiff",".psd"],
+    success:(files)=>importFromSource("dropbox",files.slice(0,slots).map(f=>({url:f.link,name:f.name,bytes:f.bytes}))),
+    cancel:()=>{ $("connectArea").innerHTML=""; onSourceClick($('#sources .src[data-src="upload"]')||$("sources").querySelector(".src")); },
+  });
+}
+
+/* Shared import path: the server fetches each picked file and validates it
+   exactly like a direct upload. */
+async function importFromSource(sourceId,picked){
+  $("connectArea").innerHTML=`<b>Importing ${picked.length} file(s)\u2026</b>`;
+  let added=0;
+  for(const p of picked){
+    try{
+      const res=await apiReq("/uploads/import",{method:"POST",
+        body:JSON.stringify({source:sourceId,url:p.url,filename:p.name,sizeBytes:p.bytes||0})});
+      if(!res.ok){ $("connectArea").innerHTML=`<b>${(res.j&&res.j.error)||"That file couldn't be imported."}</b>`; continue; }
+      const val=await apiReq(`/uploads/${res.j.fileId}/complete`,{method:"POST"});
+      if(!val.ok){ $("connectArea").innerHTML=`<b>${(val.j&&val.j.error)||"That file couldn't be validated."}</b>`; continue; }
+      const photo={id:uid++,name:p.name,url:val.j.url,w:val.j.width||0,h:val.j.height||0,
+        paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
+        julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,
+        fileId:res.j.fileId,source:res.j.sourceLabel};
+      photo.size=defaultSize(photo);
+      state.photos.push(photo);
+      if(!state.activeId)state.activeId=photo.id;
+      added++;
+    }catch(e){ $("connectArea").innerHTML=`<b>Import failed: ${e.message}</b>`; }
+  }
+  if(added){
+    $("connectArea").innerHTML=`<b>Imported ${added} file(s).</b>`;
+    renderFiles(); syncNav(); updateTotals();
+  }
+}
 $("fileInput").onchange=e=>{addFiles(e.target.files);e.target.value="";};
 $("dropzone").addEventListener("dragover",e=>e.preventDefault());
 $("dropzone").addEventListener("drop",e=>{e.preventDefault();addFiles(e.dataTransfer.files);});
@@ -1015,6 +1095,7 @@ $("newOrderBtn").onclick=()=>location.reload();
 
 
 /* ---- boot: pull live prices from the server ---- */
+loadSources();
 syncCatalog().then(ok=>{
   if(!ok)return;
   if(typeof renderSizes==="function")try{renderSizes();}catch(e){}

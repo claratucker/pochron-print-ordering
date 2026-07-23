@@ -10,6 +10,8 @@ import { loadCatalog } from '../lib/catalog.js';
 import { bestDpi } from '../lib/pricing.js';
 import { getOrSetDraftToken } from '../lib/auth.js';
 import { hasRoomFor } from '../lib/disk.js';
+import { isAllowedUrl, isPrivateAddress, CONNECTORS } from '../lib/connectors.js';
+import dns from 'node:dns/promises';
 import { UPLOAD_DIR } from '../adapters/storage.js';
 
 export const uploadsRouter = Router();
@@ -240,4 +242,126 @@ uploadsRouter.get('/file/*', async (req, res) => {
   if (!buffer) return res.status(404).end();
   res.setHeader('Content-Type', 'application/octet-stream');
   res.send(buffer);
+});
+
+// POST /api/uploads/import — pull a file the customer picked in Dropbox,
+// Lightroom, Flickr or Google Photos (§ Phase 2).
+//
+// All four hand the browser a temporary URL; this fetches it server-side and
+// runs it through exactly the same validation as a direct upload, so there is
+// one code path for scanning, metadata and DPI.
+//
+// The URL is attacker-controllable, so it is checked twice: the host must be on
+// the connector's allowlist, and it must resolve to a public address. Without
+// the second check an allowlisted name could still be pointed at the cloud
+// metadata service and leak this server's credentials.
+const ImportSchema = z.object({
+  source: z.string().min(1),
+  url: z.string().url(),
+  filename: z.string().min(1).max(255),
+  sizeBytes: z.number().int().nonnegative().optional(),
+});
+
+uploadsRouter.post('/import', async (req, res) => {
+  const token = getOrSetDraftToken(req, res);
+  const parsed = ImportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid import request.', details: parsed.error.flatten() });
+  const { source, url, filename } = parsed.data;
+
+  const check = isAllowedUrl(url, source);
+  if (!check.ok) return res.status(400).json({ error: check.reason, code: 'BAD_SOURCE_URL' });
+  const connector = check.connector;
+
+  const active = db.prepare(
+    `SELECT COUNT(*) c FROM files WHERE owner_token = ? AND status != 'rejected'`
+  ).get(token).c;
+  if (active >= config.uploads.maxFiles) {
+    return res.status(409).json({ error: `Up to ${config.uploads.maxFiles} files per order.`, code: 'MAX_FILES' });
+  }
+
+  // Resolve the host and refuse private/link-local addresses.
+  try {
+    const addrs = await dns.lookup(check.url.hostname, { all: true });
+    if (!addrs.length || addrs.some((a) => isPrivateAddress(a.address))) {
+      return res.status(400).json({ error: 'That source address is not permitted.', code: 'BLOCKED_ADDRESS' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'Could not resolve that source.', code: 'DNS_FAILED' });
+  }
+
+  const importMax = config.uploads.importMaxBytes;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.uploads.importTimeoutMs);
+
+  try {
+    const head = await fetch(url, { method: 'GET', signal: controller.signal, redirect: 'follow' });
+    if (!head.ok) {
+      return res.status(502).json({ error: `${connector.label} refused the download (${head.status}).`, code: 'SOURCE_FETCH_FAILED' });
+    }
+
+    // Reject oversized imports up front rather than buffering them. Very large
+    // originals are better transferred directly, which uses the resumable path.
+    const declared = Number(head.headers.get('content-length') || 0);
+    if (declared && declared > importMax) {
+      return res.status(413).json({
+        error: `That file is ${(declared / 1073741824).toFixed(1)} GB. Please download it and upload it here directly so the transfer can resume if interrupted.`,
+        code: 'IMPORT_TOO_LARGE',
+      });
+    }
+
+    const buffer = Buffer.from(await head.arrayBuffer());
+    if (buffer.length > importMax) {
+      return res.status(413).json({ error: 'That file is too large to import.', code: 'IMPORT_TOO_LARGE' });
+    }
+
+    const room = await hasRoomFor(buffer.length, UPLOAD_DIR);
+    if (!room.ok) {
+      return res.status(507).json({ error: 'We are temporarily unable to accept new files. Please contact the studio.', code: 'INSUFFICIENT_STORAGE' });
+    }
+
+    const fileId = crypto.randomUUID();
+    const key = `${fileId}/${filename.replace(/[^\w.\-]+/g, '_').slice(0, 200)}`;
+    await storage.writeDerived(key, buffer);
+
+    db.prepare(
+      `INSERT INTO files (id, owner_token, storage_key, original_name, mime, bytes, status, source, source_quality)
+       VALUES (?,?,?,?,?,?, 'uploaded', ?, ?)`
+    ).run(fileId, token, key, filename, head.headers.get('content-type') || null,
+          buffer.length, connector.id, connector.quality);
+
+    res.json({
+      fileId,
+      source: connector.id,
+      sourceLabel: connector.label,
+      quality: connector.quality,
+      qualityNote: connector.qualityNote,
+      sizeBytes: buffer.length,
+      // The client calls /complete next, exactly as with a direct upload.
+      validate: `/api/uploads/${fileId}/complete`,
+    });
+  } catch (e) {
+    const aborted = e.name === 'AbortError';
+    res.status(aborted ? 504 : 502).json({
+      error: aborted ? `${connector.label} took too long to respond.` : `Could not fetch that file from ${connector.label}.`,
+      code: aborted ? 'SOURCE_TIMEOUT' : 'SOURCE_FETCH_FAILED',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+// GET /api/uploads/sources — which connectors are available, and how good the
+// files from each are for printing. The client renders the picker buttons and
+// the quality caveats from this.
+uploadsRouter.get('/sources', (req, res) => {
+  const enabled = config.uploads.enabledConnectors;
+  // A source is only offered if it is both enabled AND actually configured —
+  // showing a button that cannot work is worse than not showing it.
+  const configured = (c) => (c.id === 'dropbox' ? !!config.uploads.dropboxAppKey : true);
+  res.json({
+    dropboxAppKey: config.uploads.dropboxAppKey,
+    sources: Object.values(CONNECTORS)
+      .filter((c) => enabled.includes(c.id) && configured(c))
+      .map((c) => ({ id: c.id, label: c.label, quality: c.quality, qualityNote: c.qualityNote })),
+  });
 });

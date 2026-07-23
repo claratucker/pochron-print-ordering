@@ -125,6 +125,8 @@ function ensureColumn(table, column, decl) {
 }
 ensureColumn('order_items', 'print_file_key', 'TEXT');
 ensureColumn('files', 'multipart_upload_id', 'TEXT');
+ensureColumn('files', 'source', "TEXT DEFAULT 'upload'");        // upload | dropbox | flickr | ...
+ensureColumn('files', 'source_quality', 'TEXT');                  // original | conditional | compressed
 ensureColumn('orders', 'white_label_name', 'TEXT');
 ensureColumn('orders', 'tax_status', "TEXT DEFAULT 'none'");
 

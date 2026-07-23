@@ -38,6 +38,14 @@ export const config = {
     // Never let uploads consume the last of the volume — SQLite needs room to
     // write, so a full disk is a data-loss risk, not just a failed upload.
     diskReserveBytes: int(process.env.DISK_RESERVE_BYTES, 3221225472), // 3 GB
+    // Cloud-connector imports are buffered, so they are capped well below the
+    // direct-upload limit; bigger files should use the resumable direct path.
+    importMaxBytes: int(process.env.IMPORT_MAX_BYTES, 1073741824),   // 1 GB
+    importTimeoutMs: int(process.env.IMPORT_TIMEOUT_MS, 120000),
+    enabledConnectors: list(process.env.ENABLED_CONNECTORS, ['dropbox', 'lightroom']),
+    // Dropbox Chooser app key. Public by design — it is embedded in the page
+    // and only works from domains allowlisted in the Dropbox app console.
+    dropboxAppKey: process.env.DROPBOX_APP_KEY || null,
     acceptedMime: list(process.env.ACCEPTED_MIME, [
       'image/jpeg', 'image/tiff', 'image/png',
       'image/vnd.adobe.photoshop', 'application/x-photoshop', 'image/x-photoshop',
