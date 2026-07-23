@@ -9,10 +9,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Mulish:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --paper:#FFFFFF; --paper-2:#FAF9FB; --ink:#534270; --ink-soft:#6B5D83;
-    --line:#E7E3EC; --petrol:#6E5B8F; --petrol-soft:#8877A8; --tab:#6E5B8F; --light-accent:#6B5D83;
+    /* SURFACES are neutral; TEXT AND ACCENTS keep the studio's purple.
+       Every surface below measured a violet or warm cast before (C* 2.7-6.1)
+       and has been swapped for the grey of identical lightness, C* = 0.0. */
+    --paper:#FFFFFF; --paper-2:#F7F7F8; --ink:#534270; --ink-soft:#6B5D83;
+    --line:#E5E5E5; --petrol:#6E5B8F; --petrol-soft:#8877A8; --tab:#6E5B8F; --light-accent:#6B5D83;
     --tan:#B7A992; --tan-soft:#C9BDAA; --plum:#534270;
-    --ok:#3f6f4a; --warn:#9a6a2a; --bad:#a24941; --wall:#F1EFF4;
+    /* Surround for both print previews. Light, and NEUTRAL BY MEASUREMENT.
+       ISO 3664 (viewing conditions for graphic technology and photography)
+       requires the area around an image to be neutral and matte: CIELAB chroma
+       C* <= 2.0. A tinted surround shifts how the eye judges colour in the
+       image beside it — the one error a fine-art print studio cannot afford.
+       C* = 0.0 exactly, at L* 76-80 — under the standard's L* <= 80 ceiling for
+       viewing surrounds, and still ~22 points below white paper (L* 100), so
+       the paper edge reads without a drawn outline. The gradient span is
+       deliberately narrow (4 points of L*): enough to feel lit, not enough to
+       pull attention off the photograph. */
+    --surround:#C0C0C0;
+    --surround-grad:radial-gradient(120% 80% at 50% 30%, #C6C6C6 0%, #BCBCBC 70%);
+    --ok:#3f6f4a; --warn:#9a6a2a; --bad:#a24941; --wall:#F0F0F0;
     --serif:Georgia,"Times New Roman",serif;
     --display:"Archivo Black","Arial Black","Helvetica Neue",sans-serif;
     --sans:"Proxima Nova","Mulish",ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -79,11 +94,12 @@
   .cfg .rm2{border:0; background:transparent; color:var(--ink-soft); font-size:12px; text-decoration:underline}
   .warnbadge{font-family:var(--mono); font-size:10px; color:var(--bad)}
 
-  .stage{background:radial-gradient(120% 80% at 50% 30%, #E2DED5 0%, var(--wall) 70%); border:1px solid var(--line); border-radius:3px; min-height:340px; display:flex; align-items:center; justify-content:center; padding:30px; position:relative; overflow:hidden; position:sticky; top:96px}
+  .stage{background:var(--surround); background-image:var(--surround-grad); border:1px solid var(--line); border-radius:3px; min-height:340px; display:flex; align-items:center; justify-content:center; padding:30px; position:relative; overflow:hidden; position:sticky; top:96px}
   .frame{background:transparent; padding:0; box-shadow:0 22px 40px -18px rgba(33,28,23,.55),0 4px 10px -6px rgba(33,28,23,.4); transition:width .4s,height .4s}
-  .frame .window{width:100%; height:100%; overflow:hidden; background:#cdc8bd; position:relative}
+  .frame .window{width:100%; height:100%; overflow:hidden; background:#C8C8C8; position:relative}
   .frame img{width:100%; height:100%; object-fit:cover; display:block}
-  .scalehint{position:absolute; bottom:10px; right:14px; font-family:var(--mono); font-size:10px; color:var(--ink-soft)}
+  /* Sits on the dark stage, so it needs a light value like the preview caption. */
+  .scalehint{position:absolute; bottom:10px; right:14px; font-family:var(--mono); font-size:10px; color:var(--plum)}
   .totalbar{border-top:1px solid var(--line); margin-top:16px; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline}
   .totalbar .t{font-family:var(--sans); font-size:26px}
   .ph{font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--warn); text-transform:uppercase}
@@ -101,17 +117,33 @@
     .order{grid-template-columns:1fr; gap:12px}
   }
   @media(max-width:430px){ .cfg .fields{grid-template-columns:1fr} }
-  .cropframe{width:100%; aspect-ratio:1; background:#cdc8bd; overflow:hidden; position:relative; border:1px solid var(--line)}
-  .cropframe img{width:100%; height:100%; object-fit:cover; cursor:grab}
+  .cropframe{width:100%; aspect-ratio:1; background:#C8C8C8; overflow:hidden; position:relative; border:1px solid var(--line); box-sizing:border-box}
+  .cropframe img{display:block; width:100%; height:100%; object-fit:cover; cursor:grab}
   .cropframe img:active{cursor:grabbing}
   .cropframe .tint{position:absolute; inset:0; pointer-events:none; mix-blend-mode:soft-light}
+  /* The rule-of-thirds guide is only useful while repositioning, so it stays
+     hidden until the customer drags (or hovers on a pointer device). Left on
+     permanently it just sits over their photograph. */
+  .cropframe .thirds{opacity:0; transition:opacity .12s ease}
+  .cropframe:hover .thirds, .cropframe.dragging .thirds{opacity:1}
   .cropframe .thirds{position:absolute; inset:0; pointer-events:none; background:
     linear-gradient(to right, transparent 33.2%, rgba(255,255,255,.3) 33.2%, rgba(255,255,255,.3) 33.5%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.3) 66.5%, rgba(255,255,255,.3) 66.8%, transparent 66.8%),
     linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,.3) 33.2%, rgba(255,255,255,.3) 33.5%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.3) 66.5%, rgba(255,255,255,.3) 66.8%, transparent 66.8%)}
   .crop .nm{font-family:var(--sans); font-size:17px; margin-bottom:2px}
   .crop .spec{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-bottom:12px}
   .draghint{font-family:var(--mono); font-size:10.5px; color:var(--ink-soft); margin-top:6px}
-  .cropframe.bordered{background:#fff}
+    /* The white paper needs no outline — it reads on its own against the darker
+     surround, the way a print does against a gallery wall. */
+  .cropframe.bordered{background:#fff; border-color:transparent}
+  .previewcol{background:var(--surround); background-image:var(--surround-grad); padding:14px; border-radius:3px}
+  .previewcol .cropframe{border-color:rgba(0,0,0,.18)}
+  /* The caption sits on the dark surround, so it needs a light value to stay
+     readable — the default ink colour disappears against it. */
+  /* On the grey surround the soft ink reads weakly; plum holds up against it. */
+  .previewcol .draghint{color:var(--plum); padding:0 2px}
+  .previewcol .presentation .pfield label{color:var(--plum)}
+  .previewcol .presentation{border-top-color:rgba(0,0,0,.12)}
+  .previewcol .draghint .badge{background:rgba(255,255,255,.55)}
   .mountframe{width:100%; line-height:0; box-shadow:0 14px 26px -14px rgba(33,28,23,.5); transition:padding .25s, background .25s}
   .presentation{display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-top:14px; padding-top:13px; border-top:1px solid var(--line)}
   .presentation .pfield{display:flex; flex-direction:column; gap:3px}
@@ -122,8 +154,8 @@
   .cc{display:flex; gap:11px; align-items:flex-start; border:1px solid var(--line); border-radius:3px; padding:12px 13px; background:var(--paper)}
   .cc.on{border-color:var(--petrol-soft); background:rgba(124,95,165,.06)}
   .cc input{margin-top:2px; width:18px; height:18px; accent-color:var(--petrol); flex:none}
-  .cc .lbl{font-size:13.5px; font-weight:600}
-  .cc .help{font-size:12px; color:var(--ink-soft); line-height:1.45; margin-top:3px}
+  .cc .lbl{display:block; font-size:13.5px; font-weight:600}
+  .cc .help{display:block; font-size:12px; color:var(--ink-soft); line-height:1.45; margin-top:3px}
   .cc .badge-j{display:inline-block; font-family:var(--mono); font-size:10px; color:var(--petrol); border:1px solid var(--petrol-soft); border-radius:999px; padding:1px 7px; margin-left:6px}
 
   /* the self-edit editor (Filerobot stand-in) */
@@ -141,6 +173,15 @@
   .shipcard{margin-top:26px; border-top:1px solid var(--line); padding-top:20px}
   .shipcard .cc{max-width:none}
   .co-sec{border:1px solid var(--line); background:var(--paper-2); border-radius:3px; padding:16px 18px; margin-bottom:14px}
+  /* The low-resolution gate carries the same amber treatment as the print
+     disclaimer, so both cautions read as one voice rather than two designs. */
+  .dpigate{background:rgba(138,90,31,.08); border-color:rgba(138,90,31,.25)}
+  /* --warn on the amber tint measures 4.11:1, under WCAG AA. This is text a
+     customer must read before ticking the acknowledgment, so it uses a deeper
+     amber that reaches 4.86:1 while staying the same hue. */
+  .dpigate .lbl, .dpigate .help{color:#8C5F25}
+  .dpigate a{color:#8C5F25; text-underline-offset:2px}
+  .dpigate input{accent-color:var(--warn)}
   .co-sec h3{font-family:var(--sans); font-weight:700; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--light-accent); margin:0 0 13px}
   .co-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px}
   .co-field{display:flex; flex-direction:column; gap:4px}
@@ -187,7 +228,7 @@
   .queue{display:grid; gap:16px}
   .order{display:grid; grid-template-columns:104px 1fr auto; gap:18px; align-items:center; border:1px solid var(--line); background:var(--paper-2); border-radius:3px; padding:16px}
   .order.cc-on{border-left:3px solid var(--petrol)}
-  .order .thumb{width:104px; height:104px; background:#cdc8bd; border-radius:2px; overflow:hidden; position:relative}
+  .order .thumb{width:104px; height:104px; background:#C8C8C8; border-radius:2px; overflow:hidden; position:relative}
   .order .thumb img{width:100%; height:100%; object-fit:cover}
   .order .thumb .tint{position:absolute; inset:0; mix-blend-mode:soft-light}
   .order .meta .who{font-family:var(--sans); font-size:17px; margin-bottom:2px}
@@ -390,8 +431,6 @@
   </footer>
 
 <script src="https://js.stripe.com/v3/"></script>
-<!-- Dropbox Chooser; the app key is injected at runtime from /api/uploads/sources -->
-<script id="dropboxjs" src="https://www.dropbox.com/static/api/2/dropins.js"></script>
 <!-- real in-browser editor (Filerobot Image Editor) -->
 <script src="https://scaleflex.cloudimg.io/v7/plugins/filerobot-image-editor/latest/filerobot-image-editor.min.js"></script>
 <script>
@@ -700,7 +739,7 @@ function dpiGateHTML(){
   let body=`${ts.length} image${ts.length>1?'s':''} may not print sharp at the size chosen. ${ts.length>1?'They are':'It is'} lower resolution than we recommend and may look soft or pixelated.`;
   if(hopeless.length)body+=` ${hopeless.length>1?`${hopeless.length} of them are`:'One is'} small even for our smallest size. For the best result you can <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">contact the studio</a> about a custom small print.`;
   body+=` You can still print as-is. Check the box and Pochron Studios will review your order and reach out with any questions.`;
-  return `<div class="co-sec" style="border-color:var(--warn)"><label class="cc" style="border:0;padding:0;background:transparent"><input type="checkbox" class="dpiAck" ${state.dpiAck?'checked':''}><span><span class="lbl" style="color:var(--warn)">Some images may not print sharp</span><span class="help">${body}</span></span></label></div>`;
+  return `<div class="co-sec dpigate"><label class="cc" style="border:0;padding:0;background:transparent"><input type="checkbox" class="dpiAck" ${state.dpiAck?'checked':''}><span><span class="lbl">Some images may not print sharp</span><span class="help">${body}</span></span></label></div>`;
 }
 function refreshDpiGates(){
   ["dpiGate","dpiGate3"].forEach(id=>{const el=$(id);if(el)el.innerHTML=dpiGateHTML();});
@@ -718,12 +757,30 @@ async function loadSources(){
     const {ok,j}=await apiReq("/uploads/sources");
     if(!ok)return;
     SOURCES=j.sources||[]; DROPBOX_KEY=j.dropboxAppKey||null;
-    if(DROPBOX_KEY){
-      const tag=document.getElementById("dropboxjs");
-      if(tag)tag.setAttribute("data-app-key",DROPBOX_KEY);
-    }
+    if(DROPBOX_KEY)await loadDropboxScript(DROPBOX_KEY);
     renderSourceButtons();
-  }catch(e){/* upload still works without connectors */}
+  }catch(e){
+    // Direct upload still works, but say why the connector buttons are missing.
+    // Opening this file straight from disk (file://) is the usual cause — the
+    // API is same-origin, so it only resolves when the page is served.
+    console.warn("Photo sources unavailable:",e.message,
+      "\u2014 connector buttons need this page served from the site, not opened as a local file.");
+  }
+}
+/* dropins.js reads data-app-key off its own <script> tag as it loads, so the
+   attribute must exist BEFORE injection. Setting it afterwards leaves the
+   widget initialised with no key, which surfaces as "App is misconfigured". */
+function loadDropboxScript(key){
+  return new Promise(resolve=>{
+    if(window.Dropbox)return resolve(true);
+    const el=document.createElement("script");
+    el.id="dropboxjs";
+    el.src="https://www.dropbox.com/static/api/2/dropins.js";
+    el.setAttribute("data-app-key",key);
+    el.onload=()=>resolve(true);
+    el.onerror=()=>resolve(false);
+    document.head.appendChild(el);
+  });
 }
 function renderSourceButtons(){
   const bar=$("sources");
@@ -876,7 +933,7 @@ function borderPct(p){const short=Math.min(...dims(p.size));return Math.max(0.25
 function renderPreview2(){
   const p=state.photos.find(x=>x.id==state.activeId)||state.photos[0];if(!p)return;
   const[w,h]=dims(p.size);$("frame2").style.width=(w*PX_PER_IN+48)+"px";$("frame2").style.height=(h*PX_PER_IN+48)+"px";
-  const win=$("frame2").querySelector(".window");win.style.padding='0';win.style.background='#cdc8bd';
+  const win=$("frame2").querySelector(".window");win.style.padding='0';win.style.background='#C8C8C8';
   const img=$("preview2");img.src=p.url;img.style.objectPosition=`${p.posX}% ${p.posY}%`;
   $("scaleHint2").textContent=`${p.name} · ${p.size} in`;makeDraggable(img,p);
 }
@@ -889,13 +946,19 @@ function renderCrops(){
     // Self-edit with a real render → show Filerobot's actual output (crop + tone baked in).
     // Otherwise show the original (studio path) with the light CSS approximation.
     const useBaked=!p.julie&&p.editedPreview;
-    const showFilter=!p.julie&&!p.editedPreview;
     const previewSrc=useBaked?p.editedPreview:p.url;
-    const fstyle=showFilter?`filter:${filterString(p.adjust)};transform:${transformString(p.adjust)}`:"";
-    const tint=showFilter?tintStyle(p.adjust):"transparent";
+    // Ticking Hand Colour Correction must not change the image's geometry — only
+    // its colour treatment. Previously the transform was dropped entirely when
+    // the box was ticked, which changed how the browser laid the image out
+    // inside a padded (bordered) frame and made it appear to stretch. Now the
+    // same filter+transform is ALWAYS applied, with neutral values when there
+    // is nothing to show, so the two states render identically.
+    const previewAdjust=(p.julie||useBaked)?blankAdjust():p.adjust;
+    const fstyle=`filter:${filterString(previewAdjust)};transform:${transformString(previewAdjust)}`;
+    const tint=(p.julie||useBaked)?"transparent":tintStyle(p.adjust);
     const bord=p.border!=='none';
     return `<div class="crop">
-      <div>
+      <div class="previewcol">
         <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${bord?` style="padding:${borderPct(p)}%"`:''}><img src="${previewSrc}" style="object-position:${p.posX}% ${p.posY}%;${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
         <div class="draghint">${useBaked?'your edit · ':''}${bord?'white border · your whole image fits':'drag to reposition · fills the print'} · ${p.size} in · <span class="badge ${cls}"><span class="dot ${cls}"></span>${dpi} dpi · ${lab}</span></div>
         <div class="presentation">
@@ -949,8 +1012,11 @@ function renderCrops(){
 }
 
 function makeDraggable(img,p){let d=false;
-  img.onpointerdown=e=>{d=true;img.setPointerCapture(e.pointerId);};
-  img.onpointerup=()=>d=false;
+  const frame=img.closest(".cropframe");
+  // Touch devices have no hover, so the guide is driven by the drag itself.
+  img.onpointerdown=e=>{d=true;img.setPointerCapture(e.pointerId);frame&&frame.classList.add("dragging");};
+  img.onpointerup=()=>{d=false;frame&&frame.classList.remove("dragging");};
+  img.onpointercancel=()=>{d=false;frame&&frame.classList.remove("dragging");};
   img.onpointermove=e=>{if(!d)return;const r=img.getBoundingClientRect();
     p.posX=Math.max(0,Math.min(100,((e.clientX-r.left)/r.width)*100));
     p.posY=Math.max(0,Math.min(100,((e.clientY-r.top)/r.height)*100));
