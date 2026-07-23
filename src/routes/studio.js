@@ -33,7 +33,7 @@ studioRouter.use(requireStudio);   // every studio route is authenticated
 // GET /api/studio/queue — orders awaiting proof, plus recent history.
 studioRouter.get('/queue', (req, res) => {
   const rows = db.prepare(
-    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, total, created_at
+    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, tax_status, total, created_at
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
   const pending = rows.filter((o) => o.status === 'submitted' || o.status === 'on_hold').length;
@@ -44,6 +44,8 @@ studioRouter.get('/queue', (req, res) => {
       whiteLabel: !!o.white_label, total: o.total, createdAt: o.created_at,
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
+      taxStatus: o.tax_status || 'none',
+      taxNeedsReview: o.tax_status === 'failed',
       // White-label parcels ship under the CUSTOMER's business name at the
       // studio's drop address — no Pochron branding (§10).
       returnAddress: o.white_label

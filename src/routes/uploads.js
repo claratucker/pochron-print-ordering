@@ -9,6 +9,8 @@ import { extractMeta, extractMetaFromHeader } from '../lib/imagemeta.js';
 import { loadCatalog } from '../lib/catalog.js';
 import { bestDpi } from '../lib/pricing.js';
 import { getOrSetDraftToken } from '../lib/auth.js';
+import { hasRoomFor } from '../lib/disk.js';
+import { UPLOAD_DIR } from '../adapters/storage.js';
 
 export const uploadsRouter = Router();
 
@@ -43,6 +45,17 @@ uploadsRouter.post('/init', async (req, res) => {
   }
   if (mime && !config.uploads.acceptedMime.includes(mime)) {
     return res.status(415).json({ error: `Unsupported type: ${mime}. Accepted: JPEG, TIFF, PSD, PNG.`, code: 'BAD_TYPE' });
+  }
+
+  // Refuse before handing out an upload target, not halfway through a 4 GB transfer.
+  const room = await hasRoomFor(sizeBytes, UPLOAD_DIR);
+  if (!room.ok) {
+    console.error(`DISK: refusing upload — ${(room.freeBytes / 1073741824).toFixed(1)} GB free, ${room.usedPct}% used`);
+    return res.status(507).json({
+      error: 'We are temporarily unable to accept new uploads. Please contact the studio and we will arrange the transfer.',
+      code: 'INSUFFICIENT_STORAGE',
+      fallback: { studio: config.email.studioContactUrl },
+    });
   }
 
   const fileId = crypto.randomUUID();

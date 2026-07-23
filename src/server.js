@@ -3,7 +3,8 @@ import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { config } from './config.js';
-import { db } from './db/index.js';               // opens + migrates on import
+import { diskStatus } from './lib/disk.js';
+import { db, DATA_DIR } from './db/index.js';               // opens + migrates on import
 import { storage } from './adapters/storage.js';
 import { payment } from './adapters/payment.js';
 import { email } from './adapters/email.js';
@@ -43,7 +44,7 @@ app.use((req, res, next) =>
   req.path.startsWith('/api/uploads/local/') ? next() : express.json({ limit: '2mb' })(req, res, next));
 
 // Health / readiness — reports which adapters are live.
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const catalogRows = db.prepare('SELECT COUNT(*) c FROM prices').get().c;
   res.json({
     ok: true,
@@ -51,6 +52,7 @@ app.get('/api/health', (req, res) => {
     adapters: { storage: storage.name, payment: payment.name, email: email.name, sharp: sharpAvailable },
     catalogPriceRows: catalogRows,
     seeded: catalogRows > 0,
+    disk: await diskStatus(DATA_DIR),
   });
 });
 

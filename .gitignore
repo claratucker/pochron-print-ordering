@@ -4,3 +4,5 @@ data/
 *.log
 .DS_Store
 _*.mjs
+
+backups/

@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:stripe": "PAYMENT_DRIVER=stripe vitest run tests/payments-stripe.test.js",
-    "test:all": "vitest run && npm run smoke"
+    "test:all": "vitest run && npm run smoke",
+    "backup": "node scripts/backup.js"
   },
   "engines": {
     "node": ">=20"

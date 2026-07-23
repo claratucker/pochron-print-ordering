@@ -131,6 +131,7 @@ ordersRouter.post('/', async (req, res) => {
   }
 
   let quote;
+  let taxResult = { amount: 0, status: 'none', provider: 'none' };
   try {
     const cat = loadCatalog();
     const q = priceOrder(cat, items, files, shipping.method);
@@ -149,8 +150,8 @@ ordersRouter.post('/', async (req, res) => {
         code: 'MANUAL_QUOTE', studio: config.email.studioContactUrl,
       });
     }
-    const taxAmount = await tax.quote({ printsTotal: q.printsTotal, shippingCost: q.shippingCost, address: shipping });
-    quote = finalizeTotals(q, taxAmount);
+    taxResult = await tax.quote({ printsTotal: q.printsTotal, shippingCost: q.shippingCost, address: shipping });
+    quote = finalizeTotals(q, taxResult.amount);
   } catch (e) {
     if (e instanceof PriceError) return res.status(400).json({ error: e.message });
     throw e;
@@ -199,15 +200,15 @@ ordersRouter.post('/', async (req, res) => {
       `INSERT INTO orders
         (ref,status,customer_name,email,phone,
          ship_name,ship_addr1,ship_addr2,ship_city,ship_state,ship_zip,ship_country,ship_method,
-         white_label,white_label_name,low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,total,
+         white_label,white_label_name,low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,tax_status,total,
          payment_ref,payment_status)
-       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?,?, ?,?,?,?,?,?, ?,?)`
+       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?,?, ?,?,?,?,?,?,?, ?,?)`
     ).run(
       ref, contact.name, contact.email, contact.phone || null,
       shipping.name || contact.name, shipping.addr1, shipping.addr2 || null,
       shipping.city, shipping.state, shipping.zip, shipping.country || 'United States', shipping.method,
       whiteLabel ? 1 : 0, whiteLabel ? (whiteLabelName || null) : null, lowResAck ? 1 : 0,
-      quote.subtotal, quote.discountRate, quote.discountAmount, quote.shippingCost, quote.tax, quote.total,
+      quote.subtotal, quote.discountRate, quote.discountAmount, quote.shippingCost, quote.tax, taxResult.status, quote.total,
       auth.paymentRef, auth.status === 'authorized' || auth.status === 'requires_capture' ? 'authorized' : auth.status
     );
     const orderId = info.lastInsertRowid;

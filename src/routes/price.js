@@ -36,8 +36,8 @@ priceRouter.post('/quote', async (req, res) => {
   try {
     const cat = loadCatalog();
     const quote = priceOrder(cat, items, files, shipMethod);
-    const taxAmount = await tax.quote({ printsTotal: quote.printsTotal, shippingCost: quote.shippingCost, address });
-    res.json(finalizeTotals(quote, taxAmount));
+    const taxResult = await tax.quote({ printsTotal: quote.printsTotal, shippingCost: quote.shippingCost, address });
+    res.json({ ...finalizeTotals(quote, taxResult.amount), taxStatus: taxResult.status });
   } catch (e) {
     if (e instanceof PriceError) return res.status(400).json({ error: e.message });
     throw e;

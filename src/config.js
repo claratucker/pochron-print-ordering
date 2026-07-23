@@ -35,6 +35,9 @@ export const config = {
     inlineProcessMaxBytes: int(process.env.INLINE_PROCESS_MAX_BYTES, 268435456), // 256 MB
     // How many header bytes to pull for dimension/metadata extraction on big files.
     headerReadBytes: int(process.env.HEADER_READ_BYTES, 8388608), // 8 MB
+    // Never let uploads consume the last of the volume — SQLite needs room to
+    // write, so a full disk is a data-loss risk, not just a failed upload.
+    diskReserveBytes: int(process.env.DISK_RESERVE_BYTES, 3221225472), // 3 GB
     acceptedMime: list(process.env.ACCEPTED_MIME, [
       'image/jpeg', 'image/tiff', 'image/png',
       'image/vnd.adobe.photoshop', 'application/x-photoshop', 'image/x-photoshop',
@@ -78,6 +81,7 @@ export const config = {
   },
 
   tax: {
+    stripeTaxCode: process.env.STRIPE_TAX_CODE || 'txcd_99999999',
     driver: process.env.TAX_DRIVER || 'none',
     flatRate: parseFloat(process.env.TAX_FLAT_RATE || '0'),
   },
