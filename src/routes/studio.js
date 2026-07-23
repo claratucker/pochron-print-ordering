@@ -97,6 +97,19 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
     ? +lineSum.toFixed(2)
     : order.total;
 
+  // An order authorized under a different payment driver can't be captured here
+  // (e.g. a mock ref left over from testing, now that Stripe is live).
+  // Mock references look like `pi_mock_PS-123456_...`, which also start with
+  // `pi_` — so test for the mock marker, not just the prefix.
+  const ref = String(order.payment_ref || '');
+  const isRealStripeRef = /^pi_(?!mock)/.test(ref);
+  if (payment.name === 'stripe' && ref && !isRealStripeRef) {
+    return res.status(409).json({
+      error: 'This order was placed before live payments were enabled, so there is nothing to capture. Place a new test order.',
+      code: 'PAYMENT_DRIVER_MISMATCH',
+    });
+  }
+
   let cap;
   try {
     cap = await payment.capture({ paymentRef: order.payment_ref, amount: partial ? captureAmount : undefined });

@@ -24,7 +24,8 @@ npm install
 cp .env.example .env        # safe local defaults; edit for production
 npm run seed                # loads the catalog (prices from the sheet)
 npm start                   # http://localhost:4000
-npm run smoke               # optional: end-to-end test on port 4999
+npm test                    # unit + integration suite (fast, offline)
+npm run smoke               # end-to-end, including large-file uploads
 ```
 
 Out of the box it runs with **mock adapters** — local-disk storage, a mock payment
@@ -162,6 +163,13 @@ the real large-file-transfer destination, the neutral white-label return address
 carriers and the tax source, and the draft-retention window. The code encodes the
 current answers and isolates each so they're one config or catalog edit away.
 
+## Testing
+
+`npm test` runs 57 unit and integration tests; `npm run smoke` runs the
+end-to-end flow including resumable multi-GB uploads. Stripe has its own opt-in
+suite. Every bug that ever reached a running system has a regression test named
+after it. See `TESTING.md`.
+
 ## Deploying & publishing
 
 See `DEPLOY.md` for the GitHub push, a free-tier live-demo deploy (runs on the
@@ -172,5 +180,6 @@ mock adapters, no cloud accounts needed), and the Squarespace nav-link step. See
 
 Built by Clara Tucker for Pochron Studios, with their permission, as a custom
 print-ordering system. Pochron Studios brand and product details are used with
-permission. Code is MIT-licensed (see `LICENSE`).
+permission. Code is MIT-licensed (see `LICENSE`); dependency licensing is
+documented in `THIRD-PARTY-NOTICES.md` (no GPL/AGPL anywhere in the tree).
 

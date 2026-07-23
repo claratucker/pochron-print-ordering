@@ -9,7 +9,11 @@
     "dev": "node --watch src/server.js",
     "seed": "node src/db/seed.js",
     "smoke": "node scripts/smoke.js && node scripts/smoke-large.js",
-    "smoke:large": "node scripts/smoke-large.js"
+    "smoke:large": "node scripts/smoke-large.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:stripe": "PAYMENT_DRIVER=stripe vitest run tests/payments-stripe.test.js",
+    "test:all": "vitest run && npm run smoke"
   },
   "engines": {
     "node": ">=20"
@@ -25,5 +29,8 @@
     "bcryptjs": "^2.4.3",
     "sharp": "^0.33.5",
     "stripe": "^17.7.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

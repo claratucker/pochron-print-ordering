@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', '..', 'data');
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
 mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new Database(join(DATA_DIR, 'pochron.db'));

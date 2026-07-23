@@ -485,9 +485,17 @@ async function uploadToServer(file){
   }catch(e){ return {error:e.message}; }
 }
 /* ===== Stripe Elements (live card entry) ===== */
-let stripe=null, cardEl=null;
+let stripe=null, cardEl=null, stripeRequired=false;
 function initStripe(pay){
-  if(!pay||pay.driver!=="stripe"||!pay.publishableKey||!window.Stripe)return;   // mock mode keeps the stand-in
+  if(!pay)return;
+  stripeRequired = pay.driver==="stripe";
+  if(!stripeRequired)return;                       // mock mode keeps the stand-in
+  if(!pay.publishableKey||!window.Stripe){
+    // Live payments expected but the card field can't load — say so rather than
+    // letting the customer submit an order with nothing attached.
+    $("payNote").textContent="Card entry unavailable — please refresh or contact the studio.";
+    return;
+  }
   try{
     stripe=Stripe(pay.publishableKey);
     const elements=stripe.elements();
@@ -505,6 +513,8 @@ function initStripe(pay){
 }
 // Turn the card field into a PaymentMethod id for the server to authorize.
 async function makePaymentMethod(){
+  if(stripeRequired&&(!stripe||!cardEl))
+    return {error:"The secure card field didn't load. Please refresh the page and try again."};
   if(!stripe||!cardEl)return {};                       // mock mode
   const {paymentMethod,error}=await stripe.createPaymentMethod({
     type:"card",card:cardEl,

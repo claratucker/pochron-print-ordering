@@ -159,11 +159,32 @@ ordersRouter.post('/', async (req, res) => {
   const ref = newRef();
 
   // Authorize payment (auth now, capture on approval).
+  // A live payment processor needs an actual card. Without one the PaymentIntent
+  // is created but never confirmed, so nothing is authorized — and accepting the
+  // order anyway would show the customer a confirmation and put an unfunded job
+  // in the studio queue. Refuse before creating anything.
+  if (payment.name !== 'mock' && !paymentMethodId) {
+    return res.status(402).json({
+      error: 'Please enter your card details to place the order.',
+      code: 'NO_PAYMENT_METHOD',
+    });
+  }
+
   let auth;
   try {
     auth = await payment.authorize({ amount: quote.total, email: contact.email, orderRef: ref, paymentMethodId });
   } catch (e) {
     return res.status(402).json({ error: 'Your card could not be authorized.', detail: e.message });
+  }
+
+  // Only 'authorized' (funds held) or a pending 3D Secure challenge may proceed.
+  const OK_STATES = ['authorized', 'requires_action', 'requires_confirmation'];
+  if (!OK_STATES.includes(auth.status)) {
+    return res.status(402).json({
+      error: 'Your card was not authorized. Please check the details and try again.',
+      code: 'NOT_AUTHORIZED',
+      detail: auth.status,
+    });
   }
 
   // A bank may require 3D Secure. The order is still created (below) so the
