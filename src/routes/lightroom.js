@@ -216,6 +216,21 @@ async function lrFetch(accessToken, path, { raw = false } = {}) {
   return JSON.parse(text.replace(/^while\s*\(1\)\s*\{\}\s*/, ''));
 }
 
+// Renditions are generated on demand. A 404 with {"type":["not in asset"]}
+// means "not made yet", not "not allowed" — so ask for it and retry.
+async function generateRendition(accessToken, catalogId, assetId, type) {
+  const res = await fetch(`${LR}/catalogs/${catalogId}/assets/${assetId}/renditions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'X-API-Key': config.connectors.lightroom.clientId,
+      'X-Generate-Renditions': type,
+      'Content-Type': 'application/octet-stream',
+    },
+  });
+  return res.status;   // 202 = accepted and being generated
+}
+
 function requireToken() {
   return async (req, res, next) => {
     const owner = getOrSetDraftToken(req, res);
@@ -297,20 +312,45 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
     // actually get is recorded and shown.
     const LADDER = [
       { path: 'master', quality: 'original', label: 'original file' },
-      { path: 'renditions/fullsize', quality: 'original', label: 'full-resolution render' },
+      { path: 'renditions/fullsize', quality: 'original', label: 'full-resolution render', generate: 'fullsize' },
       { path: 'renditions/2048', quality: 'conditional', label: '2048px preview' },
     ];
 
     let r = null, quality = null, note = null, used = null;
     const tried = [];
     for (const step of LADDER) {
+      const url = `/catalogs/${catalogId}/assets/${assetId}/${step.path}`;
       try {
-        r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/${step.path}`, { raw: true });
+        r = await lrFetch(req.lrToken, url, { raw: true });
         quality = step.quality; used = step.label;
         break;
       } catch (err) {
         tried.push(`${step.path}=${err.status || 'err'}`);
-        r = null;
+        // A missing rendition can be requested; a forbidden master cannot.
+        if (err.status === 404 && step.generate) {
+          try {
+            const gen = await generateRendition(req.lrToken, catalogId, assetId, step.generate);
+            if (gen === 200 || gen === 202) {
+              // Generation is asynchronous; give it a few seconds.
+              for (let attempt = 0; attempt < 4; attempt++) {
+                await new Promise((ok) => setTimeout(ok, 1500));
+                try {
+                  r = await lrFetch(req.lrToken, url, { raw: true });
+                  quality = step.quality; used = step.label;
+                  tried.push(`${step.path}=generated`);
+                  break;
+                } catch { /* still building */ }
+              }
+              if (r) break;
+              tried.push(`${step.path}=gen-timeout`);
+            } else {
+              tried.push(`${step.path}=gen-${gen}`);
+            }
+          } catch (genErr) {
+            tried.push(`${step.path}=gen-failed`);
+          }
+        }
+        if (!r) r = null;
       }
     }
     if (!r) {
@@ -321,7 +361,11 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
       });
     }
     if (quality !== 'original') {
-      note = `Lightroom supplied a ${used} rather than your original file, so this photo is lower resolution than the file on your computer. Check the size warning before ordering a large print — or export the original and upload it directly.`;
+      // Say what it actually means in inches. "Lower resolution" is abstract;
+      // "good up to about 8 inches" is a decision the customer can act on.
+      note = `Adobe would not release your original file, so Lightroom sent a ${used}. `
+        + `That prints well up to roughly 8 inches on the long edge. For anything larger, `
+        + `export the original from Lightroom and upload it here instead.`;
       console.warn(`Lightroom: fell back to ${used} for ${assetId} (${tried.join(', ')})`);
     }
 
