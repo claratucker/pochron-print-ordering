@@ -297,6 +297,7 @@
         </label>
         <div class="specnote">Max file size 500 MB · Up to 12 photos per order · Accepted formats: JPEG, TIFF, PSD, PNG · Adobe RGB (1998) or ProPhoto RGB recommended, profile embedded</div>
         <details class="prep"><summary>Working with a large file?</summary><div class="specnote" style="margin-top:8px">Flatten layered PSDs and save TIFFs with LZW compression to reduce size with no loss of quality. 8-bit is fine unless you specifically need 16-bit.</div></details>
+        <div class="specnote" id="fileCount" style="color:var(--ink-soft)"></div>
         <div class="specnote" id="capMsg" style="color:var(--warn);display:none"></div>
       </div>
       <div id="connectArea" class="connect-note hidden"></div>
@@ -496,7 +497,8 @@ async function uploadToServer(file){
   try{
     const init=await apiReq("/uploads/init",{method:"POST",
       body:JSON.stringify({filename:file.name,sizeBytes:file.size,mime:file.type})});
-    if(!init.ok)return {error:init.j.error||"Upload rejected."};
+    // Pass the code through: the caller reacts differently to MAX_FILES.
+    if(!init.ok)return {error:init.j.error||"Upload rejected.",code:init.j&&init.j.code};
     const u=init.j.upload;
     if(u.mode==="single"){
       const url=(u.driver==="local")?u.uploadUrl:u.uploadUrl;
@@ -947,7 +949,12 @@ function addFiles(list){
   files.slice(0,slots).forEach(addPhoto);
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function notice(html){const el=$("capMsg");if(!el)return;el.innerHTML=html;el.style.display="block";}
+function notice(html){
+  const el=$("capMsg");if(!el)return;
+  el.innerHTML=html;el.style.display="block";el.dataset.sticky="1";
+  // Stays until the visitor changes something, so it can't flash and vanish.
+  setTimeout(()=>{el.dataset.sticky="0";},4000);
+}
 
 /* Hitting the limit must never be a dead end. This clears the draft on the
    SERVER as well as in the browser — the two disagreeing is what made this
@@ -984,7 +991,16 @@ function addPhoto(file){
     photo.uploading=true;
     uploadToServer(file).then(res=>{
       photo.uploading=false;
-      if(res.error){photo.uploadError=res.error;}
+      if(res.error){
+        // The server refused it, so it is not part of the order. Drop it and
+        // say why, rather than leaving a photo that looks accepted.
+        state.photos=state.photos.filter(x=>x.id!==photo.id);
+        if(state.activeId===photo.id)state.activeId=state.photos[0]?.id||null;
+        if(res.code==="MAX_FILES")noticeAtLimit(res.error);
+        else notice(`<strong>${photo.name}</strong>: ${res.error}`);
+        renderFiles();syncNav();updateTotals();
+        return;
+      }
       else{
         photo.fileId=res.fileId;
         // trust the server's real pixel dimensions when it has them
@@ -996,7 +1012,10 @@ function addPhoto(file){
   im.src=url;
 }
 function renderFiles(){
-  if($("capMsg")&&state.photos.length<MAX_FILES)$("capMsg").style.display="none";
+  const cap=$("capMsg");
+  if(cap&&cap.dataset.sticky!=="1"&&state.photos.length<MAX_FILES)cap.style.display="none";
+  const cnt=$("fileCount");
+  if(cnt)cnt.textContent=state.photos.length?`${state.photos.length} of ${MAX_FILES} photos`:"";
   $("filelist").innerHTML=state.photos.map(p=>`<div class="fileitem"><img src="${p.url}"><span class="nm">${p.name} · ${p.w}×${p.h}px</span><button class="rm" data-id="${p.id}">×</button></div>`).join("");
   $("filelist").querySelectorAll(".rm").forEach(b=>b.onclick=()=>{
     const gone=state.photos.find(x=>x.id==b.dataset.id);
