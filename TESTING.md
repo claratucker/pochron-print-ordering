@@ -21,6 +21,13 @@ The rule here is that **money and irreversible actions get the most coverage**.
 An order that prints when it shouldn't costs materials; an order accepted with
 no funds costs a customer relationship. Cosmetic bugs don't.
 
+Tests never read the machine's `.env`. `config.js` calls dotenv, so without
+`DOTENV_CONFIG_PATH=/dev/null` in `tests/setup.js` the suite would inherit
+whatever happens to be deployed — and a test could pass on a laptop with no
+credentials while failing on the server that has them. That actually happened
+with the Lightroom connector tests. Everything the tests depend on is set
+explicitly in the setup file.
+
 Each test file boots its **own server on its own port with its own throwaway
 database** (`tests/helpers/app.js`). That means tests never see each other's
 orders, can run in any order, and leave nothing behind. Environment setup lives

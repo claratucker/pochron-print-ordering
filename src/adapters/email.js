@@ -82,6 +82,30 @@ Pochron Studios · info@pochronstudios.com`;
   },
 
   // approved / charged
+  // The hold lapsed while the order waited for review. Ask the customer to
+  // re-confirm — explaining WHY, so an unexpected card prompt doesn't read as
+  // a scam or a second charge.
+  async reauthorize(order, clientSecret) {
+    const text = [
+      `Your order ${order.ref} is still with us — we just need you to confirm your card again.`,
+      '',
+      'Card authorizations expire after about a week, and yours ran out while we were',
+      'reviewing your prints. Nothing has been charged, and nothing has been lost.',
+      '',
+      'Confirm your card to keep the order moving:',
+      `${config.email.orderBaseUrl}/order/reauthorize.html?ref=${encodeURIComponent(order.ref)}`,
+      '',
+      `Order total: $${Number(order.total).toFixed(2)}`,
+      '',
+      'As before, your card is only authorized now — you are charged when we approve',
+      'your order for printing.',
+      '',
+      `Questions? ${config.email.studioContactUrl}`,
+      'Pochron Studios · info@pochronstudios.com',
+    ].join('\n');
+    return driver.send({ to: order.email, subject: `Please re-confirm your card — ${order.ref}`, text });
+  },
+
   async approved(order, capturedAmount) {
     const text =
 `Good news — your order ${order.ref} is approved and moving to print.

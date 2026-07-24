@@ -285,6 +285,53 @@ ordersRouter.post('/:ref/payment-status', async (req, res) => {
   }
 });
 
+// GET /api/orders/:ref/reauth — what the customer needs to re-confirm their
+// card. Guarded by the order email like every other customer lookup.
+ordersRouter.get('/:ref/reauth', async (req, res) => {
+  const order = getOrderByRef(req.params.ref);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email || email !== String(order.email).toLowerCase()) {
+    return res.status(403).json({ error: 'Please use the link from your email.' });
+  }
+  if (['captured', 'partially_captured'].includes(order.payment_status)) {
+    return res.json({ ref: order.ref, done: true, message: 'This order is already paid — nothing to do.' });
+  }
+  let clientSecret = null;
+  try { clientSecret = (await payment.clientSecret({ paymentRef: order.payment_ref })) || null; } catch {}
+  res.json({
+    ref: order.ref,
+    total: order.total,
+    itemCount: order.items.length,
+    paymentStatus: order.payment_status,
+    clientSecret,
+    publishableKey: config.payment.stripePublishable || null,
+  });
+});
+
+// POST /api/orders/:ref/reauth-complete — called after the customer confirms in
+// the browser. Re-reads the intent from the processor rather than trusting the
+// client, then puts the order back in the studio queue.
+ordersRouter.post('/:ref/reauth-complete', async (req, res) => {
+  const order = getOrderByRef(req.params.ref);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email || email !== String(order.email).toLowerCase()) {
+    return res.status(403).json({ error: 'Please use the link from your email.' });
+  }
+  try {
+    const s = await payment.status({ paymentRef: order.payment_ref });
+    if (s.status !== 'authorized') {
+      return res.status(402).json({ error: 'That card was not authorized. Please try again.', code: 'NOT_AUTHORIZED', detail: s.status });
+    }
+    db.prepare(`UPDATE orders SET payment_status='authorized', authorized_at=datetime('now'), status='submitted' WHERE id=?`).run(order.id);
+    db.prepare(`INSERT INTO order_messages (order_id,direction,body) VALUES (?, 'system', 'Customer re-confirmed their card; authorization renewed.')`).run(order.id);
+    res.json({ ref: order.ref, authorized: true });
+  } catch (e) {
+    res.status(502).json({ error: 'Could not confirm the payment.', detail: e.message });
+  }
+});
+
 function publicView(o) {
   return {
     ref: o.ref, status: o.status, total: o.total,

@@ -16,6 +16,7 @@ import { priceRouter } from './routes/price.js';
 import { draftRouter } from './routes/draft.js';
 import { ordersRouter } from './routes/orders.js';
 import { studioRouter } from './routes/studio.js';
+import { lightroomRouter } from './routes/lightroom.js';
 import { adminRouter } from './routes/admin.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,7 @@ app.use('/api/uploads', uploadsRouter);
 app.use('/api/price', priceRouter);
 app.use('/api/draft', draftRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/connectors/lightroom', lightroomRouter);
 app.use('/api/studio', studioRouter);
 app.use('/api/admin', adminRouter);
 

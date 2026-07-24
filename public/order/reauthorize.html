@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Confirm your card — Pochron Studios</title>
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+  :root{
+    --paper:#fff; --paper-2:#F7F7F8; --ink:#534270; --ink-soft:#6B5D83;
+    --line:#E5E5E5; --petrol:#6E5B8F; --warn:#9a6a2a; --bad:#a24941; --ok:#3f6f4a;
+    --sans:"Proxima Nova","Mulish",ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper-2);color:var(--ink);font:15px/1.6 var(--sans)}
+  header{background:var(--paper);border-bottom:1px solid var(--line);padding:20px 24px}
+  h1{font-size:14px;letter-spacing:.16em;text-transform:uppercase;margin:0;color:var(--petrol)}
+  main{max-width:540px;margin:0 auto;padding:32px 20px 80px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:24px}
+  h2{font-size:19px;margin:0 0 10px}
+  p{margin:0 0 14px;font-size:14.5px}
+  .muted{color:var(--ink-soft);font-size:13px}
+  .sum{background:var(--paper-2);border:1px solid var(--line);border-radius:3px;padding:13px 15px;margin:18px 0;font-size:14px}
+  .sum b{font-size:17px}
+  #card{border:1px solid var(--line);border-radius:3px;padding:13px 12px;background:#fff;margin-bottom:10px}
+  button{width:100%;background:var(--petrol);color:#fff;border:1px solid var(--petrol);border-radius:3px;
+    padding:13px;font:inherit;font-size:15px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  .msg{margin-top:14px;font-size:13.5px;display:none}
+  .msg.err{color:var(--bad);display:block}
+  .msg.ok{color:var(--ok);display:block}
+  .note{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-soft)}
+  a{color:var(--petrol)}
+</style>
+</head>
+<body>
+<header><h1>Pochron Studios</h1></header>
+<main>
+  <div class="card" id="panel">
+    <h2>Confirm your card</h2>
+    <p>Card authorizations expire after about a week, and yours ran out while we were
+       reviewing your prints. <strong>Nothing has been charged and nothing has been lost</strong> —
+       we just need you to confirm your card so the order can continue.</p>
+    <div class="sum" id="sum">Loading your order…</div>
+    <div id="payArea" style="display:none">
+      <div id="card"></div>
+      <button id="go">Confirm card</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="note">
+      As before, your card is only <em>authorized</em> now. You are charged when Pochron
+      Studios approves your order for printing.
+      <br><br>Questions? <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">Contact the studio</a>.
+    </div>
+  </div>
+</main>
+
+<script>
+const params = new URLSearchParams(location.search);
+const ref = params.get("ref");
+// The email is the guard on every customer-facing lookup. If it isn't in the
+// link, ask for it rather than exposing the order.
+let email = params.get("email");
+const $ = (id) => document.getElementById(id);
+const say = (t, cls) => { const m = $("msg"); m.textContent = t; m.className = "msg " + cls; };
+
+async function boot() {
+  if (!ref) return say("This link is incomplete. Please use the link from your email.", "err");
+  if (!email) {
+    email = prompt("Please enter the email address on your order:");
+    if (!email) return say("We need the email on the order to continue.", "err");
+  }
+  let data;
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(ref)}/reauth?email=${encodeURIComponent(email)}`);
+    data = await r.json();
+    if (!r.ok) return say(data.error || "We couldn't load that order.", "err");
+  } catch (e) { return say("Network error: " + e.message, "err"); }
+
+  if (data.done) { $("sum").textContent = data.message; return; }
+  $("sum").innerHTML = `Order <strong>${data.ref}</strong> · ${data.itemCount} photo${data.itemCount === 1 ? "" : "s"}<br><b>$${Number(data.total).toFixed(2)}</b>`;
+
+  if (!data.publishableKey || !data.clientSecret || !window.Stripe) {
+    return say("Card entry is unavailable right now. Please contact the studio and we'll sort it out.", "err");
+  }
+
+  const stripe = Stripe(data.publishableKey);
+  const card = stripe.elements().create("card");
+  card.mount("#card");
+  $("payArea").style.display = "block";
+
+  $("go").onclick = async () => {
+    $("go").disabled = true; $("go").textContent = "Confirming…";
+    const { error } = await stripe.confirmCardPayment(data.clientSecret, { payment_method: { card } });
+    if (error) {
+      $("go").disabled = false; $("go").textContent = "Confirm card";
+      return say(error.message, "err");
+    }
+    // Never trust the browser: the server re-reads the intent from Stripe.
+    try {
+      const r = await fetch(`/api/orders/${encodeURIComponent(ref)}/reauth-complete`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const j = await r.json();
+      if (!r.ok) { $("go").disabled = false; $("go").textContent = "Confirm card"; return say(j.error || "That didn't go through.", "err"); }
+      $("payArea").style.display = "none";
+      say("Thank you — your card is confirmed and your order is back with the studio.", "ok");
+    } catch (e) {
+      $("go").disabled = false; $("go").textContent = "Confirm card";
+      say("Network error: " + e.message, "err");
+    }
+  };
+}
+boot();
+</script>
+</body>
+</html>

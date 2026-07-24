@@ -54,6 +54,11 @@ export const config = {
 
   payment: {
     driver: process.env.PAYMENT_DRIVER || 'mock',
+    // Card authorizations expire. Stripe cancels an uncaptured PaymentIntent
+    // after ~7 days, and some issuers release the hold sooner. The studio
+    // reviews unhurriedly by design, so this clock has to be visible.
+    authWindowDays: int(process.env.AUTH_WINDOW_DAYS, 7),
+    authWarnDays: int(process.env.AUTH_WARN_DAYS, 5),
     stripeSecret: process.env.STRIPE_SECRET_KEY,
     stripePublishable: process.env.STRIPE_PUBLISHABLE_KEY,   // safe to send to the browser
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
@@ -71,6 +76,16 @@ export const config = {
   },
 
   // Email verification (§8 layer 3). none | kickbox | zerobounce
+  // Cloud connectors needing server-side credentials (see CONNECTORS.md).
+  connectors: {
+    lightroom: {
+      clientId: process.env.LIGHTROOM_CLIENT_ID,
+      clientSecret: process.env.LIGHTROOM_CLIENT_SECRET,
+      redirectUri: process.env.LIGHTROOM_REDIRECT_URI
+        || 'https://order.pochronstudios.com/api/connectors/lightroom/callback',
+    },
+  },
+
   emailVerify: {
     driver: process.env.EMAIL_VERIFY_DRIVER || 'none',
     apiKey: process.env.EMAIL_VERIFY_API_KEY,
@@ -80,6 +95,7 @@ export const config = {
     driver: process.env.EMAIL_DRIVER || 'console',
     from: process.env.EMAIL_FROM || 'Pochron Studios <info@pochronstudios.com>',
     studioContactUrl: process.env.STUDIO_CONTACT_URL || 'https://www.pochronstudios.com/contactus',
+    orderBaseUrl: process.env.ORDER_BASE_URL || 'https://order.pochronstudios.com',
     smtp: {
       host: process.env.SMTP_HOST,
       port: int(process.env.SMTP_PORT, 587),

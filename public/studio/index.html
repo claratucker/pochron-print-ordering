@@ -65,6 +65,11 @@
   .b-in_production,.b-approved{background:var(--ok-bg);color:var(--ok);border-color:#c3ddc7}
   .b-shipped,.b-complete{background:var(--paper2);color:var(--soft);border-color:var(--line)}
   .b-wl{background:#efeaf6;color:var(--petrol);border-color:#d9cfe8}
+  .b-auth-expiring{background:var(--warn-bg);color:var(--warn);border-color:#e6cf9f}
+  .b-auth-expired{background:var(--bad-bg);color:var(--bad);border-color:#e3c3bf}
+  .authbox{width:100%;margin-top:10px;background:var(--warn-bg);border:1px solid #e6cf9f;
+    border-radius:3px;padding:11px 13px;font-size:12.5px;color:var(--warn);line-height:1.5}
+  .authbox b{display:block;margin-bottom:3px}
 
   /* items */
   .items{padding:6px 18px 2px}
@@ -233,6 +238,7 @@ function orderCard(o){
       <span class="ref">${esc(o.ref)}</span>
       <span class="badge b-${o.status}">${esc(statusLabel(o.status))}</span>
       ${o.whiteLabel ? '<span class="badge b-wl">White-label · neutral label, no inserts</span>' : ''}
+      ${o.auth && o.auth.label ? `<span class="badge b-auth-${o.auth.status}">${esc(o.auth.label)}</span>` : ''}
       <div class="who">${esc(o.who)} <span class="em">· ${esc(o.email)}</span></div>
       <div class="grow"></div>
       <span class="tot">${money(o.total)}</span>
@@ -280,6 +286,13 @@ function actionsBlock(o){
       <div class="holdrow"><button class="ghost hold">Hold &amp; message</button></div>
     </div>
     <div class="note">Approving captures payment for the selected photos. Unchecked photos stay on hold for a partial capture.</div>
+    ${o.auth && (o.auth.status === 'expired' || o.auth.status === 'expiring') ? `
+    <div class="authbox">
+      <b>${o.auth.status === 'expired' ? 'The card hold has expired.' : 'The card hold is about to expire.'}</b>
+      A hold only lasts about a week, so this order can't be captured once it lapses.
+      Send the customer a link to re-confirm — nothing is charged until you approve.
+      <div style="margin-top:9px"><button class="reauth">Send re-authorization request</button></div>
+    </div>` : ''}
     <div class="note" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace">Return address for this parcel:<br>${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
@@ -340,6 +353,17 @@ function wireOrder(o){
       toast(`${o.ref} placed on hold — customer emailed.`);
       load();
     } catch(e){ holdBtn.disabled=false; toast(e.message); }
+  };
+
+  const reauthBtn = el.querySelector('.reauth');
+  if (reauthBtn) reauthBtn.onclick = async () => {
+    if (!confirm(`Email ${o.email} a link to re-confirm their card for ${o.ref}?`)) return;
+    reauthBtn.disabled = true;
+    try {
+      await api(`/api/studio/orders/${o.id}/reauthorize`, { method: 'POST', studio: true, body: '{}' });
+      toast(`${o.ref}: re-authorization request sent.`);
+      load();
+    } catch (e) { reauthBtn.disabled = false; toast(e.message); }
   };
 
   const shipBtn = el.querySelector('.ship');

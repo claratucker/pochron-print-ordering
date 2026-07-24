@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { config } from '../config.js';
+import { authWindow, authLabel } from '../lib/authwindow.js';
 import { requireStudio } from '../lib/auth.js';
 import { payment } from '../adapters/payment.js';
 import { emails } from '../adapters/email.js';
@@ -33,7 +34,8 @@ studioRouter.use(requireStudio);   // every studio route is authenticated
 // GET /api/studio/queue — orders awaiting proof, plus recent history.
 studioRouter.get('/queue', (req, res) => {
   const rows = db.prepare(
-    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, tax_status, total, created_at
+    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, tax_status, total, created_at,
+            payment_ref, payment_status, authorized_at, reauth_count
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
   const pending = rows.filter((o) => o.status === 'submitted' || o.status === 'on_hold').length;
@@ -45,6 +47,7 @@ studioRouter.get('/queue', (req, res) => {
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
       taxStatus: o.tax_status || 'none',
+      auth: (() => { const w = authWindow(o); return { ...w, label: authLabel(w) }; })(),
       taxNeedsReview: o.tax_status === 'failed',
       // White-label parcels ship under the CUSTOMER's business name at the
       // studio's drop address — no Pochron branding (§10).
@@ -98,6 +101,17 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
   const captureAmount = partial
     ? +lineSum.toFixed(2)
     : order.total;
+
+  // A lapsed authorization cannot be captured. Say so plainly and point at the
+  // fix, rather than letting Stripe return an opaque error.
+  const win = authWindow(order);
+  if (win.status === 'expired') {
+    return res.status(409).json({
+      error: 'The card authorization for this order has expired. Send the customer a re-authorization request, then approve once they confirm.',
+      code: 'AUTH_EXPIRED',
+      auth: win,
+    });
+  }
 
   // An order authorized under a different payment driver can't be captured here
   // (e.g. a mock ref left over from testing, now that Stripe is live).
@@ -197,11 +211,51 @@ studioRouter.post('/orders/:id/ship', async (req, res) => {
   res.json({ ref: order.ref, status: 'shipped', tracking: tracking || null });
 });
 
-// POST /api/studio/orders/:id/reauthorize — for slow proofs past the auth window (§9).
+// POST /api/studio/orders/:id/reauthorize — the authorization has lapsed (or is
+// about to). Void whatever is left of the old hold, open a fresh one for the
+// current total, and email the customer a link to re-confirm their card.
+//
+// The customer has to act because we do not store card details — which is the
+// point. Re-confirming is one click on a saved card, and it keeps the studio's
+// promise intact: still nothing captured until approval.
 studioRouter.post('/orders/:id/reauthorize', async (req, res) => {
   const order = getOrder(+req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
-  addMessage(order.id, 'system', 'Re-authorization requested (authorization expired).');
-  // In production: create a fresh PaymentIntent and email the customer a link to re-confirm.
-  res.json({ ref: order.ref, note: 'Re-authorization flow stubbed — create a new auth and email the customer to re-confirm.' });
+  if (['captured', 'partially_captured'].includes(order.payment_status)) {
+    return res.status(409).json({ error: 'This order has already been charged.', code: 'ALREADY_CAPTURED' });
+  }
+
+  // Release the stale hold so the customer is not double-reserved.
+  if (order.payment_ref) {
+    try { await payment.void({ paymentRef: order.payment_ref }); }
+    catch (e) { console.warn('Re-auth: releasing the old hold failed (it may have lapsed already):', e.message); }
+  }
+
+  let auth;
+  try {
+    auth = await payment.authorize({
+      amount: order.total, email: order.email, orderRef: order.ref,
+    });
+  } catch (e) {
+    return res.status(502).json({ error: 'Could not open a new authorization.', detail: e.message });
+  }
+
+  db.prepare(
+    `UPDATE orders SET payment_ref=?, payment_status='reauth_pending',
+       authorized_at=datetime('now'), reauth_count=COALESCE(reauth_count,0)+1 WHERE id=?`
+  ).run(auth.paymentRef, order.id);
+
+  transition(order.id, 'on_hold', 'Authorization expired; re-authorization requested');
+  addMessage(order.id, 'system', `Re-authorization requested (attempt ${(order.reauth_count || 0) + 1}).`);
+
+  const fresh = getOrder(order.id);
+  try { await emails.reauthorize(fresh, auth.clientSecret); }
+  catch (e) { console.error('Re-auth email failed:', e.message); }
+
+  res.json({
+    ref: order.ref,
+    status: 'reauth_pending',
+    paymentRef: auth.paymentRef,
+    note: 'Customer emailed a link to re-confirm their card. Approve once they have.',
+  });
 });

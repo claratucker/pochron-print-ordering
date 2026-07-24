@@ -116,6 +116,17 @@ CREATE TABLE IF NOT EXISTS order_events (
   from_status TEXT, to_status TEXT, note TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS connector_tokens (
+  owner_token TEXT NOT NULL,          -- the guest draft cookie, so tokens are per-visitor
+  provider TEXT NOT NULL,             -- lightroom | ...
+  state TEXT,                         -- CSRF nonce, cleared once the code is exchanged
+  access_token TEXT,
+  refresh_token TEXT,
+  expires_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (owner_token, provider)
+);
 `);
 
 // Lightweight forward migrations for databases created before a column existed.
@@ -129,5 +140,8 @@ ensureColumn('files', 'source', "TEXT DEFAULT 'upload'");        // upload | dro
 ensureColumn('files', 'source_quality', 'TEXT');                  // original | conditional | compressed
 ensureColumn('orders', 'white_label_name', 'TEXT');
 ensureColumn('orders', 'tax_status', "TEXT DEFAULT 'none'");
+// Reset whenever the card is re-authorized, so the expiry clock restarts.
+ensureColumn('orders', 'authorized_at', 'TEXT');
+ensureColumn('orders', 'reauth_count', 'INTEGER DEFAULT 0');
 
 export { DATA_DIR };

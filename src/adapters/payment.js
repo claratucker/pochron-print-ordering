@@ -19,6 +19,7 @@ const mockDriver = {
   async status({ paymentRef }) {
     return { paymentRef, status: 'authorized' };
   },
+  async clientSecret({ paymentRef }) { return `${paymentRef}_secret_mock`; },
   async capture({ paymentRef, amount }) {
     return { paymentRef, status: 'captured', capturedAmount: amount };
   },
@@ -56,6 +57,12 @@ const stripeDriver = {
     // finish it, then we re-check before treating the order as authorized.
     const status = pi.status === 'requires_capture' ? 'authorized' : pi.status;
     return { paymentRef: pi.id, status, clientSecret: pi.client_secret };
+  },
+  // The secret the browser needs to confirm an existing intent (re-authorization).
+  async clientSecret({ paymentRef }) {
+    const stripe = await this._stripe();
+    const pi = await stripe.paymentIntents.retrieve(paymentRef);
+    return pi.client_secret;
   },
   // Re-read a PaymentIntent (used after the customer completes 3D Secure).
   async status({ paymentRef }) {
