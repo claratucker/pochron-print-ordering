@@ -183,14 +183,30 @@ async function tokenFor(ownerToken) {
 }
 
 async function lrFetch(accessToken, path, { raw = false } = {}) {
-  const res = await fetch(`${LR}${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'X-API-Key': config.connectors.lightroom.clientId,
-    },
-  });
+  const auth = {
+    Authorization: `Bearer ${accessToken}`,
+    'X-API-Key': config.connectors.lightroom.clientId,
+  };
+  // Binary endpoints answer with a redirect to a signed storage URL. That URL
+  // authenticates via its own signature and REJECTS an Authorization header, so
+  // the redirect is followed by hand with the auth headers stripped. Letting
+  // fetch follow it automatically forwards them and fails.
+  let res = await fetch(`${LR}${path}`, { headers: auth, redirect: 'manual' });
+
+  if ([301, 302, 303, 307, 308].includes(res.status)) {
+    const location = res.headers.get('location');
+    if (!location) {
+      const err = new Error(`Lightroom redirected with no location (${res.status})`);
+      err.status = res.status; throw err;
+    }
+    res = await fetch(new URL(location, `${LR}${path}`).toString());
+  }
+
   if (!res.ok) {
-    const err = new Error(`Lightroom returned ${res.status}`);
+    let body = '';
+    try { body = (await res.text()).slice(0, 300); } catch {}
+    console.error(`Lightroom ${res.status} on ${path}${body ? ` — ${body}` : ''}`);
+    const err = new Error(`Lightroom returned ${res.status}${body ? `: ${body}` : ''}`);
     err.status = res.status;
     throw err;
   }
@@ -271,9 +287,18 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
   if (overLimit) return res.status(409).json(overLimit);
 
   try {
-    // `master` is the original as uploaded. Renditions are derived and would
-    // defeat the point of calling Lightroom an original-quality source.
-    const r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/master`, { raw: true });
+    // `master` is the original as uploaded. Renditions are derived, so if we
+    // have to fall back the customer is told, rather than being quietly given a
+    // smaller file by a source labelled "original quality".
+    let r, quality = 'original', note = null;
+    try {
+      r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/master`, { raw: true });
+    } catch (masterErr) {
+      console.warn(`Lightroom master unavailable (${masterErr.status}); trying fullsize rendition.`);
+      r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/renditions/2048`, { raw: true });
+      quality = 'conditional';
+      note = 'Lightroom did not provide the original for this photo, so a large preview was used. Check the size warning before printing big.';
+    }
     const declared = Number(r.headers.get('content-length') || 0);
     if (declared && declared > config.uploads.importMaxBytes) {
       return res.status(413).json({
@@ -293,16 +318,17 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
 
     db.prepare(
       `INSERT INTO files (id, owner_token, storage_key, original_name, mime, bytes, status, source, source_quality)
-       VALUES (?,?,?,?,?,?, 'uploaded', 'lightroom', 'original')`
-    ).run(fileId, req.ownerToken, key, name, r.headers.get('content-type') || null, buffer.length);
+       VALUES (?,?,?,?,?,?, 'uploaded', 'lightroom', ?)`
+    ).run(fileId, req.ownerToken, key, name, r.headers.get('content-type') || null, buffer.length, quality);
 
-    res.json({ fileId, source: 'lightroom', sourceLabel: 'Adobe Lightroom', quality: 'original',
+    res.json({ fileId, source: 'lightroom', sourceLabel: 'Adobe Lightroom', quality, note,
       sizeBytes: buffer.length, validate: `/api/uploads/${fileId}/complete` });
   } catch (e) {
     // Not every asset has a master synced (smart previews only, for instance).
+    console.error('Lightroom import failed:', e.status, e.message);
     const msg = e.status === 404
       ? 'The original for that photo is not synced to Lightroom. Export it and upload directly.'
-      : 'Could not fetch that photo from Lightroom.';
-    res.status(e.status === 404 ? 409 : 502).json({ error: msg, detail: e.message });
+      : `Could not fetch that photo from Lightroom (${e.status || 'network error'}).`;
+    res.status(e.status === 404 ? 409 : 502).json({ error: msg, detail: e.message, status: e.status || null });
   }
 });

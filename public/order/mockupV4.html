@@ -891,9 +891,14 @@ async function lrImport(assetId,name,btn){
   const r=await apiReq("/connectors/lightroom/import",{method:"POST",
     body:JSON.stringify({catalogId:LR_CATALOG,assetId,filename:name})});
   if(!r.ok){btn.style.opacity="1";btn.disabled=false;
-    $("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help" style="color:var(--bad)">${(r.j&&r.j.error)||"Import failed."}</div>`);return;}
+    const why=(r.j&&r.j.error)||"Import failed.";
+    const extra=(r.j&&r.j.detail&&r.j.detail!==why)?` <span style="opacity:.7">(${String(r.j.detail).slice(0,120)})</span>`:"";
+    $("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help" style="color:var(--bad)">${why}${extra}</div>`);return;}
   const val=await apiReq(`/uploads/${r.j.fileId}/complete`,{method:"POST"});
-  if(!val.ok){btn.style.opacity="1";btn.disabled=false;return;}
+  if(!val.ok){btn.style.opacity="1";btn.disabled=false;
+    $("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help" style="color:var(--bad)">${(val.j&&val.j.error)||"That photo could not be validated."}</div>`);return;}
+  // Lightroom could not supply the original — say so rather than implying it did.
+  if(r.j.note)$("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help" style="color:var(--warn)">${r.j.note}</div>`);
   const photo={id:uid++,name,url:val.j.url,w:val.j.width||0,h:val.j.height||0,
     paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
     julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,
