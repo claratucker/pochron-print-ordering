@@ -86,9 +86,15 @@ describe('print-quality provenance', () => {
     }
   });
 
-  it('Dropbox and Lightroom are the original-quality sources', () => {
+  it('Dropbox returns the original file', () => {
     expect(CONNECTORS.dropbox.quality).toBe('original');
-    expect(CONNECTORS.lightroom.quality).toBe('original');
+  });
+
+  // Adobe gates master access separately from renditions. Until this
+  // application is entitled to originals, Lightroom cannot be advertised as
+  // original-quality — /master answers 403 and the import falls back.
+  it('Lightroom is conditional until Adobe grants master access', () => {
+    expect(CONNECTORS.lightroom.quality).toBe('conditional');
   });
 
   it('Google Photos is flagged as possibly compressed', () => {
@@ -111,7 +117,8 @@ describe('print-quality provenance', () => {
     const { json } = await app.api('/api/uploads/sources');
     // Dropbox is hidden without an app key, so assert the property that matters:
     // whatever IS offered returns the photographer's actual file.
-    for (const s of json.sources) expect(s.quality).toBe('original');
+    // No offered source may be one that silently re-compresses.
+    for (const s of json.sources) expect(['original', 'conditional']).toContain(s.quality);
     expect(json.sources.map((s) => s.id)).not.toContain('google_photos');
   });
 

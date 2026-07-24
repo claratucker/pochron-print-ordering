@@ -19,7 +19,7 @@ is, and that follows the file into the studio queue.
 | Source | Quality | Reality |
 |---|---|---|
 | **Dropbox** | ✅ original | A file sync service — bytes come back unmodified. Best fit. |
-| **Lightroom** | ✅ original | Full-resolution export from the photographer's own catalogue. The natural fit for professional clients. |
+| **Lightroom** | ⚠️ conditional | Depends on Adobe entitlement — see below. Originals are gated separately from renditions. |
 | **Flickr** | ⚠️ conditional | Has an "Original" size, but only serves it if the account owner allows original access. Otherwise you get a resized copy. |
 | **Google Photos** | ❌ compressed | See below. Weakest fit for print. |
 
@@ -100,8 +100,24 @@ which is why they are configuration rather than code:
 - **Dropbox** — register at dropbox.com/developers, add the domain to the app's
   Chooser allowlist, drop in the Chooser script and pass `linkType: 'direct'`.
   Easiest by far and the best quality; do this one first.
-- **Lightroom** — DONE. Adobe Developer Console project with an **OAuth Web App**
-  credential; entitlement for `lr_partner_apis` was granted. Set
+- **Lightroom** — WORKING, WITH A CAVEAT. Adobe Developer Console project with an
+  **OAuth Web App** credential; entitlement for `lr_partner_apis` was granted.
+
+  **Adobe gates original files separately from renditions.** With the current
+  entitlement, `GET /catalogs/{id}/assets/{id}/master` returns
+  `403 {"code":"403000"}` for every asset. The import therefore walks a quality
+  ladder — `master`, then `renditions/fullsize`, then `renditions/2048` — and
+  records which one it actually got.
+
+  This matters more here than almost anywhere else: a 2048px preview is roughly
+  an 8.5in print at 240dpi. Ordering a 20x24 from one would produce exactly the
+  soft print the studio exists to avoid. So Lightroom is registered as
+  **conditional**, not original, and any photo that fell back tells the customer
+  so before they choose a size. The DPI check is the backstop.
+
+  To make Lightroom a true original-quality source, ask Adobe to extend the
+  integration's entitlement to master/original asset access. Until then,
+  photographers wanting a large print should export and upload directly. Set
   `LIGHTROOM_CLIENT_ID` and `LIGHTROOM_CLIENT_SECRET`, and register the redirect
   URI `https://order.pochronstudios.com/api/connectors/lightroom/callback`.
 

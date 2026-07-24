@@ -287,18 +287,44 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
   if (overLimit) return res.status(409).json(overLimit);
 
   try {
-    // `master` is the original as uploaded. Renditions are derived, so if we
-    // have to fall back the customer is told, rather than being quietly given a
-    // smaller file by a source labelled "original quality".
-    let r, quality = 'original', note = null;
-    try {
-      r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/master`, { raw: true });
-    } catch (masterErr) {
-      console.warn(`Lightroom master unavailable (${masterErr.status}); trying fullsize rendition.`);
-      r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/renditions/2048`, { raw: true });
-      quality = 'conditional';
-      note = 'Lightroom did not provide the original for this photo, so a large preview was used. Check the size warning before printing big.';
+    // Quality ladder, best first. `master` is the file the photographer
+    // imported; `fullsize` is a full-resolution render; 2048 is a preview.
+    //
+    // Adobe gates master access separately from renditions, and returns 403 if
+    // the application is not entitled to it. That is NOT a fallback to shrug
+    // at: a 2048px preview is roughly an 8.5in print at 240dpi, so calling it
+    // "original quality" would be a lie on a fine-art print site. Whatever we
+    // actually get is recorded and shown.
+    const LADDER = [
+      { path: 'master', quality: 'original', label: 'original file' },
+      { path: 'renditions/fullsize', quality: 'original', label: 'full-resolution render' },
+      { path: 'renditions/2048', quality: 'conditional', label: '2048px preview' },
+    ];
+
+    let r = null, quality = null, note = null, used = null;
+    const tried = [];
+    for (const step of LADDER) {
+      try {
+        r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/${step.path}`, { raw: true });
+        quality = step.quality; used = step.label;
+        break;
+      } catch (err) {
+        tried.push(`${step.path}=${err.status || 'err'}`);
+        r = null;
+      }
     }
+    if (!r) {
+      console.error(`Lightroom: nothing retrievable for ${assetId} (${tried.join(', ')})`);
+      return res.status(502).json({
+        error: 'Lightroom would not provide this photo in any size.',
+        detail: tried.join(', '),
+      });
+    }
+    if (quality !== 'original') {
+      note = `Lightroom supplied a ${used} rather than your original file, so this photo is lower resolution than the file on your computer. Check the size warning before ordering a large print — or export the original and upload it directly.`;
+      console.warn(`Lightroom: fell back to ${used} for ${assetId} (${tried.join(', ')})`);
+    }
+
     const declared = Number(r.headers.get('content-length') || 0);
     if (declared && declared > config.uploads.importMaxBytes) {
       return res.status(413).json({

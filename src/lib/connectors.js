@@ -35,10 +35,13 @@ export const CONNECTORS = {
   lightroom: {
     id: 'lightroom',
     label: 'Adobe Lightroom',
-    // Lightroom can render a full-resolution export, and for a studio whose
-    // customers are professional photographers this is the most natural source.
-    quality: 'original',
-    qualityNote: 'Full-resolution export from the photographer\'s own catalogue.',
+    // MEASURED, not assumed. Adobe gates original-file (`master`) access
+    // separately from renditions: with rendition-only entitlement, /master
+    // returns 403 and the best available is a full-resolution render or, worse,
+    // a 2048px preview. The import records what it actually received, so a
+    // photo is never labelled original when it isn't.
+    quality: 'conditional',
+    qualityNote: 'Best available from your catalogue. If Adobe will not release the original, you will be told before ordering a large print.',
     hosts: ['lr.adobe.io', 'photos.adobe.io'],
     requiresServerAuth: true,   // Adobe I/O credentials, approved integration
   },
