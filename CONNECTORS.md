@@ -1,7 +1,7 @@
 # Cloud photo connectors
 
-**Enabled: Dropbox only.** Lightroom, Flickr and Google Photos are implemented
-and tested but switched off — see the decisions below.
+**Enabled: Dropbox and Google Drive.** Lightroom, Flickr and Google Photos are
+implemented and tested but switched off — see the decisions below.
 
 All four work the same way:
 the customer picks a file in the provider's own picker, the browser receives a
@@ -18,7 +18,8 @@ is, and that follows the file into the studio queue.
 
 | Source | Quality | Reality |
 |---|---|---|
-| **Dropbox** | ✅ original | A file sync service — bytes come back unmodified. Best fit. |
+| **Dropbox** | ✅ original | A file sync service — bytes come back unmodified. |
+| **Google Drive** | ✅ original | Also a file service. Not to be confused with Google Photos, which re-encodes. |
 | **Lightroom** | ❌ capped at 2048px | Fully built, but Adobe will not release originals to this application. Off. |
 | **Flickr** | ⚠️ conditional | Has an "Original" size, but only serves it if the account owner allows original access. Otherwise you get a resized copy. |
 | **Google Photos** | ❌ compressed | See below. Weakest fit for print. |
@@ -66,6 +67,22 @@ ENABLED_CONNECTORS=dropbox,lightroom,flickr
 
 A test asserts that only original-quality sources are offered, so switching one
 on will fail the suite until someone consciously updates it.
+
+### Google Drive uses the narrow scope deliberately
+
+The connector requests `drive.file`, **not** `drive.readonly`. That grants access
+only to the files the customer explicitly picks in the Google Picker — never
+their whole Drive.
+
+Two things follow. The customer's other files are unreachable by design rather
+than by promise. And `drive.file` is classified non-sensitive, so the
+integration avoids the restricted-scope verification and third-party CASA
+security assessment that `drive.readonly` would require — an annual,
+four-figure process.
+
+The browser passes a short-lived access token to the server for the fetch. That
+is safe precisely because of the scope: the token can only reach files already
+chosen. It is used immediately and never stored.
 
 ## Security: why the import endpoint is written defensively
 

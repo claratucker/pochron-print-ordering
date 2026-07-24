@@ -432,6 +432,9 @@
   </footer>
 
 <script src="https://js.stripe.com/v3/"></script>
+<!-- Google Picker: identity services issues the token, api.js draws the picker -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <!-- real in-browser editor (Filerobot Image Editor) -->
 <script src="https://scaleflex.cloudimg.io/v7/plugins/filerobot-image-editor/latest/filerobot-image-editor.min.js"></script>
 <script>
@@ -753,12 +756,12 @@ function refreshDpiGates(){
    Only sources the server says are enabled AND configured are shown. Pochron
    offers original-quality sources only, so a customer is never given a button
    that returns a re-compressed file. */
-let SOURCES=[], DROPBOX_KEY=null;
+let SOURCES=[], DROPBOX_KEY=null, GOOGLE=null;
 async function loadSources(){
   try{
     const {ok,j}=await apiReq("/uploads/sources");
     if(!ok)return;
-    SOURCES=j.sources||[]; DROPBOX_KEY=j.dropboxAppKey||null;
+    SOURCES=j.sources||[]; DROPBOX_KEY=j.dropboxAppKey||null; GOOGLE=j.google||null;
     if(DROPBOX_KEY)await loadDropboxScript(DROPBOX_KEY);
     renderSourceButtons();
   }catch(e){
@@ -802,6 +805,7 @@ function onSourceClick(b){
   $("connectArea").classList.toggle("hidden",up);
   if(up)return;
   if(id==="dropbox")return openDropbox(b);
+  if(id==="google_drive")return openGoogleDrive();
   if(id==="lightroom")return openLightroom();
   $("connectArea").innerHTML=`<b>${b.textContent}</b> isn't connected yet. `+
     `For now, export your file and upload it directly \u2014 that always preserves the original.`;
@@ -825,6 +829,98 @@ function openDropbox(btn){
     success:(files)=>importFromSource("dropbox",files.slice(0,slots).map(f=>({url:f.link,name:f.name,bytes:f.bytes}))),
     cancel:()=>{ $("connectArea").innerHTML=""; onSourceClick($('#sources .src[data-src="upload"]')||$("sources").querySelector(".src")); },
   });
+}
+
+/* ===== Google Drive =====
+   Uses the drive.file scope: the customer picks specific files and we get
+   access to those only, never their whole Drive. That is both the privacy-
+   respecting choice and the reason this needs no third-party security audit. */
+function loadGooglePicker(){
+  return new Promise(resolve=>{
+    if(window.google&&window.gapi&&window.gapi.client)return resolve(true);
+    const wait=setInterval(()=>{
+      if(window.google&&window.google.accounts&&window.gapi){
+        clearInterval(wait);
+        window.gapi.load("picker",()=>resolve(true));
+      }
+    },200);
+    setTimeout(()=>{clearInterval(wait);resolve(!!(window.google&&window.gapi));},8000);
+  });
+}
+
+async function openGoogleDrive(){
+  if(!GOOGLE||!GOOGLE.clientId||!GOOGLE.apiKey){
+    $("connectArea").innerHTML="<b>Google Drive isn't available right now.</b> Please upload your file directly.";
+    return;
+  }
+  $("connectArea").innerHTML="<b>Opening Google Drive\u2026</b>";
+  const ready=await loadGooglePicker();
+  if(!ready){$("connectArea").innerHTML="<b>Google Drive didn't load.</b> Please refresh, or upload directly.";return;}
+
+  const slots=MAX_FILES-state.photos.length;
+  if(slots<=0){noticeAtLimit(`You've reached ${MAX_FILES} photos.`);return;}
+
+  // Ask for a token scoped to the files the customer is about to choose.
+  const client=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE.clientId,
+    scope:"https://www.googleapis.com/auth/drive.file",
+    callback:(resp)=>{
+      if(resp.error||!resp.access_token){
+        $("connectArea").innerHTML="<b>Google sign-in didn't complete.</b> You can upload directly instead.";
+        return;
+      }
+      showGooglePicker(resp.access_token,slots);
+    },
+  });
+  client.requestAccessToken();
+}
+
+function showGooglePicker(accessToken,slots){
+  const view=new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+    .setIncludeFolders(true).setSelectFolderEnabled(false);
+  const builder=new google.picker.PickerBuilder()
+    .setOAuthToken(accessToken)
+    .setDeveloperKey(GOOGLE.apiKey)
+    .addView(view)
+    .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+    .setCallback((data)=>{
+      if(data.action===google.picker.Action.CANCELLED){$("connectArea").innerHTML="";return;}
+      if(data.action!==google.picker.Action.PICKED)return;
+      const picked=(data.docs||[]).slice(0,slots);
+      driveImportAll(accessToken,picked);
+    });
+  if(GOOGLE.appId)builder.setAppId(GOOGLE.appId);
+  builder.build().setVisible(true);
+}
+
+async function driveImportAll(accessToken,picked){
+  $("connectArea").innerHTML=`<b>Importing ${picked.length} file(s) from Google Drive\u2026</b>`;
+  let added=0;
+  for(const doc of picked){
+    try{
+      const r=await apiReq("/uploads/google-drive/import",{method:"POST",
+        body:JSON.stringify({fileId:doc.id,accessToken,filename:doc.name})});
+      if(!r.ok){
+        if(r.j&&r.j.code==="MAX_FILES"){noticeAtLimit(r.j.error);break;}
+        $("connectArea").innerHTML=`<b>${(r.j&&r.j.error)||"That file couldn't be imported."}</b>`;
+        continue;
+      }
+      const val=await apiReq(`/uploads/${r.j.fileId}/complete`,{method:"POST"});
+      if(!val.ok){$("connectArea").innerHTML=`<b>${(val.j&&val.j.error)||"That file couldn't be validated."}</b>`;continue;}
+      const photo={id:uid++,name:doc.name||"photo",url:val.j.url,w:val.j.width||0,h:val.j.height||0,
+        paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
+        julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,
+        fileId:r.j.fileId,source:"Google Drive"};
+      photo.size=defaultSize(photo);
+      state.photos.push(photo);
+      if(!state.activeId)state.activeId=photo.id;
+      added++;
+    }catch(e){$("connectArea").innerHTML=`<b>Import failed: ${e.message}</b>`;}
+  }
+  if(added){
+    $("connectArea").innerHTML=`<b>Imported ${added} file(s) from Google Drive.</b>`;
+    renderFiles();syncNav();updateTotals();
+  }
 }
 
 /* ===== Adobe Lightroom =====

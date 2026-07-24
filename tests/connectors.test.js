@@ -76,6 +76,25 @@ describe('import endpoint', () => {
   });
 });
 
+describe('google drive import', () => {
+  it('validates the request shape', async () => {
+    const res = await app.api('/api/uploads/google-drive/import', { method: 'POST', body: { fileId: 'x' } });
+    expect(res.status).toBe(400);
+  });
+
+  // The access token is the customer's, scoped to the files they picked. A
+  // rejected token must fail cleanly rather than 500.
+  it('reports a refused token without crashing', async () => {
+    const res = await app.api('/api/uploads/google-drive/import', {
+      method: 'POST',
+      body: { fileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz', accessToken: 'not-a-real-token', filename: 'x.jpg' },
+    });
+    expect([403, 502]).toContain(res.status);
+    const alive = await app.api('/api/catalog');
+    expect(alive.status).toBe(200);
+  });
+});
+
 describe('print-quality provenance', () => {
   // A fine-art studio must not print a re-compressed image at 30×40 without
   // knowing. Each provider declares what it actually returns.
@@ -88,6 +107,13 @@ describe('print-quality provenance', () => {
 
   it('Dropbox returns the original file', () => {
     expect(CONNECTORS.dropbox.quality).toBe('original');
+  });
+
+  // Drive is a FILE service — it stores bytes unmodified. This is exactly what
+  // separates it from Google Photos, which re-encodes and stays excluded.
+  it('Google Drive returns the original file', () => {
+    expect(CONNECTORS.google_drive.quality).toBe('original');
+    expect(CONNECTORS.google_photos.quality).toBe('compressed');
   });
 
   // Adobe gates master access separately from renditions. Until this

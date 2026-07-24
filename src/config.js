@@ -42,10 +42,16 @@ export const config = {
     // direct-upload limit; bigger files should use the resumable direct path.
     importMaxBytes: int(process.env.IMPORT_MAX_BYTES, 1073741824),   // 1 GB
     importTimeoutMs: int(process.env.IMPORT_TIMEOUT_MS, 120000),
-    enabledConnectors: list(process.env.ENABLED_CONNECTORS, ['dropbox']),
+    enabledConnectors: list(process.env.ENABLED_CONNECTORS, ['dropbox', 'google_drive']),
     // Dropbox Chooser app key. Public by design — it is embedded in the page
     // and only works from domains allowlisted in the Dropbox app console.
     dropboxAppKey: process.env.DROPBOX_APP_KEY || null,
+    // Google Picker needs all three in the browser. All are public: the OAuth
+    // client is restricted by authorized origin and the API key by referrer,
+    // which is what actually secures them.
+    googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+    googleApiKey: process.env.GOOGLE_API_KEY || null,
+    googleAppId: process.env.GOOGLE_APP_ID || null,
     acceptedMime: list(process.env.ACCEPTED_MIME, [
       'image/jpeg', 'image/tiff', 'image/png',
       'image/vnd.adobe.photoshop', 'application/x-photoshop', 'image/x-photoshop',

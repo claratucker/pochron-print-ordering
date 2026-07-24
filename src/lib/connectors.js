@@ -55,6 +55,18 @@ export const CONNECTORS = {
     requiresServerAuth: true,   // Adobe I/O credentials, approved integration
   },
 
+  google_drive: {
+    id: 'google_drive',
+    label: 'Google Drive',
+    // Drive is a FILE service, not a photo service: it stores and returns bytes
+    // unmodified. That is what separates it from Google Photos, which
+    // re-encodes on upload and is excluded for exactly that reason.
+    quality: 'original',
+    qualityNote: 'Google Drive stores files byte-for-byte, so this is your original.',
+    // Downloads go through the Drive API, not a public URL.
+    hosts: ['www.googleapis.com', 'googleapis.com'],
+  },
+
   // NOT ENABLED BY DEFAULT — see CONNECTORS.md. Kept here so the decision is
   // visible and reversible, not so it can be switched on without thought.
   flickr: {

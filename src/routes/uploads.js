@@ -271,6 +271,94 @@ uploadsRouter.get('/mine', (req, res) => {
   });
 });
 
+// POST /api/uploads/google-drive/import — fetch a file the customer chose in
+// the Google Picker.
+//
+// The browser sends the file id and a SHORT-LIVED access token scoped to
+// `drive.file`, which grants access only to files the customer explicitly
+// picked — not their whole Drive. That scope is why this integration needs no
+// third-party security assessment, and why the token is safe to hand over for
+// a single fetch. It is used immediately and never stored.
+const DriveImportSchema = z.object({
+  fileId: z.string().min(5).max(200),
+  accessToken: z.string().min(10),
+  filename: z.string().min(1).max(255).optional(),
+});
+
+uploadsRouter.post('/google-drive/import', async (req, res) => {
+  const token = getOrSetDraftToken(req, res);
+  const parsed = DriveImportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid import request.' });
+  const { fileId, accessToken } = parsed.data;
+
+  const overLimit = fileLimitError(token);
+  if (overLimit) return res.status(409).json(overLimit);
+
+  const auth = { Authorization: `Bearer ${accessToken}` };
+  const base = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`;
+
+  try {
+    // Metadata first: check the type and size before pulling any bytes.
+    const metaRes = await fetch(`${base}?fields=name,size,mimeType`, { headers: auth });
+    if (!metaRes.ok) {
+      const status = metaRes.status;
+      return res.status(status === 401 || status === 403 ? 403 : 502).json({
+        error: status === 401 || status === 403
+          ? 'Google would not release that file. Please pick it again.'
+          : 'Could not read that file from Google Drive.',
+        code: 'DRIVE_METADATA_FAILED',
+      });
+    }
+    const meta = await metaRes.json();
+    const name = String(parsed.data.filename || meta.name || 'drive-photo').replace(/[^\w.\-]+/g, '_').slice(0, 200);
+
+    if (meta.mimeType && !config.uploads.acceptedMime.includes(meta.mimeType)) {
+      return res.status(415).json({
+        error: `"${name}" is a ${meta.mimeType} file. Accepted: JPEG, TIFF, PSD, PNG.`,
+        code: 'BAD_TYPE',
+      });
+    }
+    const declared = Number(meta.size || 0);
+    if (declared && declared > config.uploads.importMaxBytes) {
+      return res.status(413).json({
+        error: `That file is ${(declared / 1073741824).toFixed(1)} GB. Please download it and upload it here directly so the transfer can resume if interrupted.`,
+        code: 'IMPORT_TOO_LARGE',
+      });
+    }
+
+    // alt=media returns the stored bytes unmodified — Drive does not re-encode.
+    const fileRes = await fetch(`${base}?alt=media`, { headers: auth });
+    if (!fileRes.ok) {
+      return res.status(502).json({ error: 'Could not download that file from Google Drive.', code: 'DRIVE_DOWNLOAD_FAILED' });
+    }
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    if (buffer.length > config.uploads.importMaxBytes) {
+      return res.status(413).json({ error: 'That file is too large to import.', code: 'IMPORT_TOO_LARGE' });
+    }
+
+    const room = await hasRoomFor(buffer.length, UPLOAD_DIR);
+    if (!room.ok) {
+      return res.status(507).json({ error: 'We are temporarily unable to accept new files. Please contact the studio.', code: 'INSUFFICIENT_STORAGE' });
+    }
+
+    const newId = crypto.randomUUID();
+    const key = `${newId}/${name}`;
+    await storage.writeDerived(key, buffer);
+    db.prepare(
+      `INSERT INTO files (id, owner_token, storage_key, original_name, mime, bytes, status, source, source_quality)
+       VALUES (?,?,?,?,?,?, 'uploaded', 'google_drive', 'original')`
+    ).run(newId, token, key, name, meta.mimeType || null, buffer.length);
+
+    res.json({
+      fileId: newId, source: 'google_drive', sourceLabel: 'Google Drive', quality: 'original',
+      sizeBytes: buffer.length, validate: `/api/uploads/${newId}/complete`,
+    });
+  } catch (e) {
+    console.error('Google Drive import failed:', e.message);
+    res.status(502).json({ error: 'Could not fetch that file from Google Drive.', detail: e.message });
+  }
+});
+
 // GET /api/uploads/file/:key — LOCAL driver preview/serving (dev). In production
 // originals live behind the CDN with per-customer access control (§13).
 uploadsRouter.get('/file/*', async (req, res) => {
@@ -391,9 +479,18 @@ uploadsRouter.get('/sources', (req, res) => {
   const enabled = config.uploads.enabledConnectors;
   // A source is only offered if it is both enabled AND actually configured —
   // showing a button that cannot work is worse than not showing it.
-  const configured = (c) => (c.id === 'dropbox' ? !!config.uploads.dropboxAppKey : true);
+  const configured = (c) => {
+    if (c.id === 'dropbox') return !!config.uploads.dropboxAppKey;
+    if (c.id === 'google_drive') return !!(config.uploads.googleClientId && config.uploads.googleApiKey);
+    return true;
+  };
   res.json({
     dropboxAppKey: config.uploads.dropboxAppKey,
+    google: config.uploads.googleClientId ? {
+      clientId: config.uploads.googleClientId,
+      apiKey: config.uploads.googleApiKey,
+      appId: config.uploads.googleAppId,
+    } : null,
     sources: Object.values(CONNECTORS)
       .filter((c) => enabled.includes(c.id) && configured(c))
       .map((c) => ({ id: c.id, label: c.label, quality: c.quality, qualityNote: c.qualityNote })),
