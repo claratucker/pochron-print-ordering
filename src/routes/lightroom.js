@@ -19,6 +19,7 @@ import { db } from '../db/index.js';
 import { config } from '../config.js';
 import { getOrSetDraftToken } from '../lib/auth.js';
 import { storage } from '../adapters/storage.js';
+import { fileLimitError } from '../lib/filelimit.js';
 
 export const lightroomRouter = Router();
 
@@ -266,12 +267,8 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
   const { catalogId, assetId, filename } = req.body || {};
   if (!catalogId || !assetId) return res.status(400).json({ error: 'catalogId and assetId are required.' });
 
-  const active = db.prepare(
-    `SELECT COUNT(*) c FROM files WHERE owner_token = ? AND status != 'rejected'`
-  ).get(req.ownerToken).c;
-  if (active >= config.uploads.maxFiles) {
-    return res.status(409).json({ error: `Up to ${config.uploads.maxFiles} files per order.`, code: 'MAX_FILES' });
-  }
+  const overLimit = fileLimitError(req.ownerToken);
+  if (overLimit) return res.status(409).json(overLimit);
 
   try {
     // `master` is the original as uploaded. Renditions are derived and would

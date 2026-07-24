@@ -977,7 +977,15 @@ function addPhoto(file){
 function renderFiles(){
   if($("capMsg")&&state.photos.length<MAX_FILES)$("capMsg").style.display="none";
   $("filelist").innerHTML=state.photos.map(p=>`<div class="fileitem"><img src="${p.url}"><span class="nm">${p.name} · ${p.w}×${p.h}px</span><button class="rm" data-id="${p.id}">×</button></div>`).join("");
-  $("filelist").querySelectorAll(".rm").forEach(b=>b.onclick=()=>{state.photos=state.photos.filter(x=>x.id!=b.dataset.id);if(state.activeId==b.dataset.id)state.activeId=state.photos[0]?.id||null;renderFiles();syncNav();});
+  $("filelist").querySelectorAll(".rm").forEach(b=>b.onclick=()=>{
+    const gone=state.photos.find(x=>x.id==b.dataset.id);
+    state.photos=state.photos.filter(x=>x.id!=b.dataset.id);
+    if(state.activeId==b.dataset.id)state.activeId=state.photos[0]?.id||null;
+    // Tell the server, or the slot stays used and the customer hits the
+    // per-order limit with a visibly empty cart.
+    if(gone&&gone.fileId)apiReq(`/uploads/${gone.fileId}`,{method:"DELETE"}).catch(()=>{});
+    renderFiles();syncNav();updateTotals();
+  });
 }
 function syncNav(){const has=state.photos.length>0;$("toStep2").disabled=!has;
   $("stepper").querySelector('[data-step="2"]').disabled=!has;$("stepper").querySelector('[data-step="3"]').disabled=!has;$("stepper").querySelector('[data-step="4"]').disabled=!has;}

@@ -49,6 +49,42 @@ describe('upload validation', () => {
     expect(over.json.code).toBe('MAX_FILES');
   });
 
+  it('removing a photo frees its slot', async () => {
+    app.resetCookie();
+    const ids = [];
+    for (let i = 0; i < 12; i++) {
+      const r = await app.api('/api/uploads/init', { method: 'POST',
+        body: { filename: `f${i}.png`, sizeBytes: 1000, mime: 'image/png' } });
+      ids.push(r.json.fileId);
+    }
+    const full = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'over.png', sizeBytes: 1000, mime: 'image/png' } });
+    expect(full.status).toBe(409);
+
+    const del = await app.api(`/api/uploads/${ids[0]}`, { method: 'DELETE' });
+    expect(del.json.removed).toBe(true);
+
+    const room = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'replacement.png', sizeBytes: 1000, mime: 'image/png' } });
+    expect(room.ok, JSON.stringify(room.json)).toBe(true);
+  });
+
+  it('clearing the draft releases every file in it', async () => {
+    app.resetCookie();
+    for (let i = 0; i < 12; i++) {
+      await app.api('/api/uploads/init', { method: 'POST',
+        body: { filename: `c${i}.png`, sizeBytes: 1000, mime: 'image/png' } });
+    }
+    expect((await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'x.png', sizeBytes: 1000, mime: 'image/png' } })).status).toBe(409);
+
+    await app.api('/api/draft', { method: 'DELETE' });
+
+    const after = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'fresh-start.png', sizeBytes: 1000, mime: 'image/png' } });
+    expect(after.ok, JSON.stringify(after.json)).toBe(true);
+  });
+
   it("one visitor's files are not counted against another's limit", async () => {
     app.resetCookie();
     const fresh = await app.api('/api/uploads/init', { method: 'POST',

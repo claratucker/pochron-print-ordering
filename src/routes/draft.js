@@ -47,6 +47,15 @@ draftRouter.put('/', (req, res) => {
 // DELETE /api/draft — clear (e.g. after successful submit).
 draftRouter.delete('/', (req, res) => {
   const token = readDraftToken(req);
-  if (token) db.prepare('DELETE FROM drafts WHERE token = ?').run(token);
+  if (token) {
+    db.prepare('DELETE FROM drafts WHERE token = ?').run(token);
+    // Release the files too, or the visitor keeps consuming their per-order
+    // allowance for photos they have explicitly discarded. Files already
+    // attached to a placed order are left alone — those are the studio's record.
+    db.prepare(
+      `UPDATE files SET status='rejected', reject_reason='draft_cleared'
+        WHERE owner_token = ? AND order_id IS NULL AND status != 'rejected'`
+    ).run(token);
+  }
   res.json({ cleared: true });
 });

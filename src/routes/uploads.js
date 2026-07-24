@@ -10,6 +10,7 @@ import { loadCatalog } from '../lib/catalog.js';
 import { bestDpi } from '../lib/pricing.js';
 import { getOrSetDraftToken } from '../lib/auth.js';
 import { hasRoomFor } from '../lib/disk.js';
+import { fileLimitError } from '../lib/filelimit.js';
 import { isAllowedUrl, isPrivateAddress, CONNECTORS } from '../lib/connectors.js';
 import dns from 'node:dns/promises';
 import { UPLOAD_DIR } from '../adapters/storage.js';
@@ -32,12 +33,8 @@ uploadsRouter.post('/init', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Invalid upload init', details: parsed.error.flatten() });
   const { filename, sizeBytes, mime } = parsed.data;
 
-  const active = db.prepare(
-    `SELECT COUNT(*) c FROM files WHERE owner_token = ? AND status != 'rejected'`
-  ).get(token).c;
-  if (active >= config.uploads.maxFiles) {
-    return res.status(409).json({ error: `Up to ${config.uploads.maxFiles} files per order.`, code: 'MAX_FILES' });
-  }
+  const overLimit = fileLimitError(token);
+  if (overLimit) return res.status(409).json(overLimit);
   if (sizeBytes > config.uploads.maxBytes) {
     return res.status(413).json({
       error: `"${filename}" is over the ${Math.round(config.uploads.maxBytes / 1073741824)} GB limit.`,
@@ -233,6 +230,19 @@ uploadsRouter.post('/:fileId/complete', async (req, res) => {
   });
 });
 
+// DELETE /api/uploads/:fileId — the customer removed a photo from their order.
+// This has to reach the server: otherwise the slot stays consumed and they hit
+// the per-order limit with a visibly empty cart.
+uploadsRouter.delete('/:fileId', (req, res) => {
+  const token = getOrSetDraftToken(req, res);
+  const file = db.prepare('SELECT * FROM files WHERE id = ?').get(req.params.fileId);
+  if (!file) return res.json({ removed: true });                       // already gone
+  if (file.owner_token !== token) return res.status(403).json({ error: 'Not your file.' });
+  if (file.order_id) return res.status(409).json({ error: 'That photo belongs to a placed order.', code: 'ALREADY_ORDERED' });
+  db.prepare(`UPDATE files SET status='rejected', reject_reason='removed_by_customer' WHERE id = ?`).run(file.id);
+  res.json({ removed: true });
+});
+
 // GET /api/uploads/file/:key — LOCAL driver preview/serving (dev). In production
 // originals live behind the CDN with per-customer access control (§13).
 uploadsRouter.get('/file/*', async (req, res) => {
@@ -272,12 +282,8 @@ uploadsRouter.post('/import', async (req, res) => {
   if (!check.ok) return res.status(400).json({ error: check.reason, code: 'BAD_SOURCE_URL' });
   const connector = check.connector;
 
-  const active = db.prepare(
-    `SELECT COUNT(*) c FROM files WHERE owner_token = ? AND status != 'rejected'`
-  ).get(token).c;
-  if (active >= config.uploads.maxFiles) {
-    return res.status(409).json({ error: `Up to ${config.uploads.maxFiles} files per order.`, code: 'MAX_FILES' });
-  }
+  const overLimit = fileLimitError(token);
+  if (overLimit) return res.status(409).json(overLimit);
 
   // Resolve the host and refuse private/link-local addresses.
   try {

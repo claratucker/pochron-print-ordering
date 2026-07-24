@@ -106,6 +106,33 @@ describe('regressions', () => {
     expect(queue.json.queue.some((o) => o.ref === order.json.ref)).toBe(true);
   });
 
+  // BUG: the per-order file limit counted every file the visitor had EVER
+  // uploaded, including ones already attached to placed orders. It worked for a
+  // first-time visitor and then blocked returning customers on their second
+  // order with "Up to 12 photos per order" while their cart was empty. Found
+  // when the Lightroom picker refused every photo.
+  it('the file limit counts the current order only, not past ones', async () => {
+    app.resetCookie();
+
+    // Fill an order to the limit, then place it.
+    const ids = [];
+    for (let i = 0; i < 3; i++) {
+      const f = await app.uploadImage(`hist-${i}.png`, 3000, 2400);
+      ids.push(f.fileId);
+    }
+    const placed = await app.api('/api/orders', { method: 'POST', body: {
+      items: ids.map((fileId) => ({ fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 1, colorPath: 'none' })),
+      contact: { name: 'Repeat Customer', email: 'repeat@example.com' },
+      shipping: { addr1: '1 A St', city: 'Brooklyn', state: 'NY', zip: '11215', method: 'standard' },
+    }});
+    expect(placed.status).toBe(201);
+
+    // The SAME visitor starts a new order — those files must not count.
+    const next = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'second-order.png', sizeBytes: 5000, mime: 'image/png' } });
+    expect(next.ok, JSON.stringify(next.json)).toBe(true);
+  });
+
   // BUG: metadata came back null for larger images because the file hadn't
   // finished flushing to disk before it was read back.
   it('image dimensions are read correctly at a range of sizes', async () => {
