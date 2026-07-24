@@ -1,7 +1,7 @@
 # Cloud photo connectors
 
-**Enabled: Dropbox and Adobe Lightroom.** Flickr and Google Photos are
-implemented and tested but switched off — see the decisions below.
+**Enabled: Dropbox only.** Lightroom, Flickr and Google Photos are implemented
+and tested but switched off — see the decisions below.
 
 All four work the same way:
 the customer picks a file in the provider's own picker, the browser receives a
@@ -19,7 +19,7 @@ is, and that follows the file into the studio queue.
 | Source | Quality | Reality |
 |---|---|---|
 | **Dropbox** | ✅ original | A file sync service — bytes come back unmodified. Best fit. |
-| **Lightroom** | ⚠️ depends on the customer | Full resolution if their originals live in the Lightroom cloud; 2048px if they sync from Lightroom Classic. See below. |
+| **Lightroom** | ❌ capped at 2048px | Fully built, but Adobe will not release originals to this application. Off. |
 | **Flickr** | ⚠️ conditional | Has an "Original" size, but only serves it if the account owner allows original access. Otherwise you get a resized copy. |
 | **Google Photos** | ❌ compressed | See below. Weakest fit for print. |
 
@@ -100,7 +100,15 @@ which is why they are configuration rather than code:
 - **Dropbox** — register at dropbox.com/developers, add the domain to the app's
   Chooser allowlist, drop in the Chooser script and pass `linkType: 'direct'`.
   Easiest by far and the best quality; do this one first.
-### Lightroom resolution depends on the customer, not on us
+### Why Lightroom is built but switched off
+
+**Settled by testing.** An intermediate theory — that the 403 came from
+Lightroom Classic, which syncs only 2560px smart previews and cannot upload
+originals — was disproved: a photo uploaded **directly to lightroom.adobe.com**,
+where the original is definitively in the cloud, returned the same 403. Adobe
+does not grant this application access to originals, full stop.
+
+### Detail
 
 The integration works end to end: OAuth sign-in, catalogue, albums, thumbnails,
 import. Whether it returns the ORIGINAL depends on how that customer's photos

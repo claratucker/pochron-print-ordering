@@ -42,7 +42,7 @@ export const config = {
     // direct-upload limit; bigger files should use the resumable direct path.
     importMaxBytes: int(process.env.IMPORT_MAX_BYTES, 1073741824),   // 1 GB
     importTimeoutMs: int(process.env.IMPORT_TIMEOUT_MS, 120000),
-    enabledConnectors: list(process.env.ENABLED_CONNECTORS, ['dropbox', 'lightroom']),
+    enabledConnectors: list(process.env.ENABLED_CONNECTORS, ['dropbox']),
     // Dropbox Chooser app key. Public by design — it is embedded in the page
     // and only works from domains allowlisted in the Dropbox app console.
     dropboxAppKey: process.env.DROPBOX_APP_KEY || null,

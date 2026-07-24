@@ -35,16 +35,22 @@ export const CONNECTORS = {
   lightroom: {
     id: 'lightroom',
     label: 'Adobe Lightroom',
-    // Quality depends on how the customer's photos got into Lightroom, which
-    // the API cannot tell us in advance:
-    //   - added via Lightroom desktop/mobile (cloud)  -> original IS in the
-    //     cloud, /master works, full resolution
-    //   - synced from Lightroom Classic               -> only a 2560px smart
-    //     preview is uploaded; Classic cannot sync originals at all, so
-    //     /master answers 403 and 2048px is the ceiling
-    // So this is 'conditional', and every import reports what it actually got.
+    // NOT ENABLED. Settled by testing, not assumption.
+    //
+    // /master answers 403 for EVERY asset — including one uploaded directly to
+    // lightroom.adobe.com, where the original is definitively in the cloud.
+    // So this is not a Lightroom Classic sync artefact and not a missing file:
+    // Adobe does not grant this application access to originals. Renditions
+    // cap at 2048px, and /renditions/fullsize answers 404 then 410 Gone when
+    // generation is requested.
+    //
+    // 2048px is blocked by this studio's own DPI check at 11x14 and above —
+    // most of a catalogue running to 30x40.
+    //
+    // Everything is built and tested. Re-enable if Adobe ever entitles the
+    // integration to master asset access: ENABLED_CONNECTORS=dropbox,lightroom
     quality: 'conditional',
-    qualityNote: 'Full resolution if your originals are stored in the Lightroom cloud. Photos synced from Lightroom Classic are previews only — we will tell you which you got.',
+    qualityNote: 'Capped at 2048px — Adobe will not release originals to this application.',
     hosts: ['lr.adobe.io', 'photos.adobe.io'],
     requiresServerAuth: true,   // Adobe I/O credentials, approved integration
   },

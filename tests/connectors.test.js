@@ -99,13 +99,12 @@ describe('print-quality provenance', () => {
 
   // Lightroom resolution depends on how the customer's photos reached the
   // cloud, so it must never be advertised as guaranteed original.
-  it('Lightroom is offered but never promises the original', async () => {
+  // Confirmed by testing a photo uploaded directly to the Lightroom cloud:
+  // /master still answers 403, so this is an entitlement wall rather than a
+  // sync artefact. 2048px fails this studio's DPI check at 11x14 and above.
+  it('Lightroom is not offered while Adobe withholds originals', async () => {
     const { json } = await app.api('/api/uploads/sources');
-    const lr = json.sources.find((s) => s.id === 'lightroom');
-    if (lr) {
-      expect(lr.quality).toBe('conditional');
-      expect(lr.qualityNote).toMatch(/Classic|preview/i);
-    }
+    expect(json.sources.map((s) => s.id)).not.toContain('lightroom');
   });
 
   it('Google Photos is flagged as possibly compressed', () => {
