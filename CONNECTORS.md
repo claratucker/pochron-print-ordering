@@ -100,9 +100,24 @@ which is why they are configuration rather than code:
 - **Dropbox** — register at dropbox.com/developers, add the domain to the app's
   Chooser allowlist, drop in the Chooser script and pass `linkType: 'direct'`.
   Easiest by far and the best quality; do this one first.
-- **Lightroom** — Adobe Developer Console project with the Lightroom API, an
-  OAuth flow, and Adobe's approval. Highest value for professional customers,
-  most setup effort.
+- **Lightroom** — DONE. Adobe Developer Console project with an **OAuth Web App**
+  credential; entitlement for `lr_partner_apis` was granted. Set
+  `LIGHTROOM_CLIENT_ID` and `LIGHTROOM_CLIENT_SECRET`, and register the redirect
+  URI `https://order.pochronstudios.com/api/connectors/lightroom/callback`.
+
+  Two Adobe quirks the code handles: every JSON response is prefixed with
+  `while (1) {}` as anti-hijacking padding and must be stripped before parsing,
+  and requests need both the bearer token and the client id as `X-API-Key`.
+
+  Imports pull the asset's **master** — the file the photographer originally
+  imported to Lightroom — not a rendition. Renditions are derived and would
+  defeat the point of calling Lightroom an original-quality source. Assets
+  synced as smart previews only have no master; those return a clear message
+  telling the customer to export and upload directly.
+
+  Access tokens are short-lived and refreshed automatically. They are stored
+  against the visitor's own draft cookie, so one customer's connection is never
+  visible to another.
 - **Flickr** — API key and OAuth 1.0a. Request the `Original` size and fall back
   to the largest available, warning when the original is unavailable.
 - **Google Photos** — Google Cloud project, OAuth consent screen, and the

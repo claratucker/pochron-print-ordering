@@ -37,6 +37,33 @@ describe('lightroom connector', () => {
     expect(body).not.toMatch(/Lightroom connected/);
   });
 
+  // Every data route must refuse an unconnected visitor — these reach into
+  // someone's photo catalogue.
+  it.each([
+    ['/api/connectors/lightroom/albums', 'GET'],
+    ['/api/connectors/lightroom/assets?catalogId=x', 'GET'],
+    ['/api/connectors/lightroom/thumb?catalogId=x&assetId=y', 'GET'],
+  ])('%s requires a connection', async (path) => {
+    const res = await app.api(path);
+    expect(res.status).toBe(401);
+    expect(res.json.code).toBe('NOT_CONNECTED');
+  });
+
+  it('import requires a connection', async () => {
+    const res = await app.api('/api/connectors/lightroom/import', {
+      method: 'POST', body: { catalogId: 'x', assetId: 'y' },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('one visitor cannot use another visitor\'s Lightroom token', async () => {
+    // Tokens are keyed to the guest draft cookie, so a fresh visitor starts
+    // unconnected even if someone else has connected on the same server.
+    app.resetCookie();
+    const res = await app.api('/api/connectors/lightroom/status');
+    expect(res.json.connected).toBe(false);
+  });
+
   it('disconnect is idempotent', async () => {
     const res = await app.api('/api/connectors/lightroom', { method: 'DELETE' });
     expect(res.status).toBe(200);

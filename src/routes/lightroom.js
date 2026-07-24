@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { config } from '../config.js';
 import { getOrSetDraftToken } from '../lib/auth.js';
+import { storage } from '../adapters/storage.js';
 
 export const lightroomRouter = Router();
 
@@ -137,3 +138,174 @@ function finish(res, ok, message) {
   </script>
 </body>`);
 }
+
+// ── Calling Lightroom on the customer's behalf ──────────────────────
+//
+// Two Adobe quirks are handled here:
+//  1. Every JSON response is prefixed with `while (1) {}` as anti-hijacking
+//     padding, so it must be stripped before parsing.
+//  2. Requests need BOTH the bearer token and the client id as X-API-Key.
+const LR = 'https://lr.adobe.io/v2';
+
+async function tokenFor(ownerToken) {
+  const row = db.prepare(
+    `SELECT access_token, refresh_token, expires_at FROM connector_tokens
+      WHERE owner_token=? AND provider='lightroom'`
+  ).get(ownerToken);
+  if (!row || !row.access_token) return null;
+
+  const expired = Date.parse(String(row.expires_at).replace(' ', 'T') + 'Z') <= Date.now();
+  if (!expired) return row.access_token;
+  if (!row.refresh_token) return null;
+
+  // Access tokens are short-lived; refresh rather than making the customer
+  // sign in again mid-order.
+  try {
+    const r = await fetch(`${IMS}/token/v3`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: config.connectors.lightroom.clientId,
+        client_secret: config.connectors.lightroom.clientSecret,
+        refresh_token: row.refresh_token,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.access_token) return null;
+    db.prepare(
+      `UPDATE connector_tokens SET access_token=?, expires_at=datetime('now', ?)
+        WHERE owner_token=? AND provider='lightroom'`
+    ).run(j.access_token, `+${Math.max(60, Number(j.expires_in || 3600) - 60)} seconds`, ownerToken);
+    return j.access_token;
+  } catch { return null; }
+}
+
+async function lrFetch(accessToken, path, { raw = false } = {}) {
+  const res = await fetch(`${LR}${path}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'X-API-Key': config.connectors.lightroom.clientId,
+    },
+  });
+  if (!res.ok) {
+    const err = new Error(`Lightroom returned ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  if (raw) return res;
+  const text = await res.text();
+  // Strip Adobe's anti-JSON-hijacking prefix before parsing.
+  return JSON.parse(text.replace(/^while\s*\(1\)\s*\{\}\s*/, ''));
+}
+
+function requireToken() {
+  return async (req, res, next) => {
+    const owner = getOrSetDraftToken(req, res);
+    const token = await tokenFor(owner);
+    if (!token) return res.status(401).json({ error: 'Please connect Lightroom first.', code: 'NOT_CONNECTED' });
+    req.lrToken = token;
+    req.ownerToken = owner;
+    next();
+  };
+}
+
+// GET /albums — the customer's catalogue and its albums.
+lightroomRouter.get('/albums', requireToken(), async (req, res) => {
+  try {
+    const cat = await lrFetch(req.lrToken, '/catalog');
+    const albums = await lrFetch(req.lrToken, `/catalogs/${cat.id}/albums?subtype=collection`);
+    res.json({
+      catalogId: cat.id,
+      albums: (albums.resources || []).map((a) => ({ id: a.id, name: a.payload?.name || 'Untitled' })),
+    });
+  } catch (e) {
+    res.status(e.status === 401 ? 401 : 502).json({ error: 'Could not read your Lightroom catalogue.', detail: e.message });
+  }
+});
+
+// GET /assets?catalogId=&albumId= — photos, newest first, with thumbnails.
+lightroomRouter.get('/assets', requireToken(), async (req, res) => {
+  const { catalogId, albumId } = req.query;
+  if (!catalogId) return res.status(400).json({ error: 'catalogId is required.' });
+  const path = albumId
+    ? `/catalogs/${catalogId}/albums/${albumId}/assets?limit=60&embed=asset`
+    : `/catalogs/${catalogId}/assets?limit=60`;
+  try {
+    const data = await lrFetch(req.lrToken, path);
+    const assets = (data.resources || []).map((r) => {
+      const a = r.asset || r;
+      return {
+        id: a.id,
+        name: a.payload?.importSource?.fileName || 'photo',
+        captured: a.payload?.captureDate || null,
+        // Thumbnails are proxied so the browser never needs the access token.
+        thumb: `/api/connectors/lightroom/thumb?catalogId=${encodeURIComponent(catalogId)}&assetId=${encodeURIComponent(a.id)}`,
+      };
+    });
+    res.json({ assets });
+  } catch (e) {
+    res.status(502).json({ error: 'Could not list your photos.', detail: e.message });
+  }
+});
+
+// GET /thumb — proxy a small rendition, so the token stays server-side.
+lightroomRouter.get('/thumb', requireToken(), async (req, res) => {
+  const { catalogId, assetId } = req.query;
+  try {
+    const r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/renditions/thumbnail2x`, { raw: true });
+    res.set('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=600');
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch { res.status(404).end(); }
+});
+
+// POST /import — pull the MASTER (the photographer's original file, not a
+// rendition) into storage and validate it exactly like a direct upload.
+lightroomRouter.post('/import', requireToken(), async (req, res) => {
+  const { catalogId, assetId, filename } = req.body || {};
+  if (!catalogId || !assetId) return res.status(400).json({ error: 'catalogId and assetId are required.' });
+
+  const active = db.prepare(
+    `SELECT COUNT(*) c FROM files WHERE owner_token = ? AND status != 'rejected'`
+  ).get(req.ownerToken).c;
+  if (active >= config.uploads.maxFiles) {
+    return res.status(409).json({ error: `Up to ${config.uploads.maxFiles} files per order.`, code: 'MAX_FILES' });
+  }
+
+  try {
+    // `master` is the original as uploaded. Renditions are derived and would
+    // defeat the point of calling Lightroom an original-quality source.
+    const r = await lrFetch(req.lrToken, `/catalogs/${catalogId}/assets/${assetId}/master`, { raw: true });
+    const declared = Number(r.headers.get('content-length') || 0);
+    if (declared && declared > config.uploads.importMaxBytes) {
+      return res.status(413).json({
+        error: `That file is ${(declared / 1073741824).toFixed(1)} GB. Please export it and upload directly so the transfer can resume if interrupted.`,
+        code: 'IMPORT_TOO_LARGE',
+      });
+    }
+    const buffer = Buffer.from(await r.arrayBuffer());
+    if (buffer.length > config.uploads.importMaxBytes) {
+      return res.status(413).json({ error: 'That file is too large to import.', code: 'IMPORT_TOO_LARGE' });
+    }
+
+    const name = String(filename || 'lightroom-photo.jpg').replace(/[^\w.\-]+/g, '_').slice(0, 200);
+    const fileId = crypto.randomUUID();
+    const key = `${fileId}/${name}`;
+    await storage.writeDerived(key, buffer);
+
+    db.prepare(
+      `INSERT INTO files (id, owner_token, storage_key, original_name, mime, bytes, status, source, source_quality)
+       VALUES (?,?,?,?,?,?, 'uploaded', 'lightroom', 'original')`
+    ).run(fileId, req.ownerToken, key, name, r.headers.get('content-type') || null, buffer.length);
+
+    res.json({ fileId, source: 'lightroom', sourceLabel: 'Adobe Lightroom', quality: 'original',
+      sizeBytes: buffer.length, validate: `/api/uploads/${fileId}/complete` });
+  } catch (e) {
+    // Not every asset has a master synced (smart previews only, for instance).
+    const msg = e.status === 404
+      ? 'The original for that photo is not synced to Lightroom. Export it and upload directly.'
+      : 'Could not fetch that photo from Lightroom.';
+    res.status(e.status === 404 ? 409 : 502).json({ error: msg, detail: e.message });
+  }
+});
