@@ -1,7 +1,7 @@
 # Cloud photo connectors
 
 **Enabled: Dropbox and Adobe Lightroom.** Flickr and Google Photos are
-implemented and tested but deliberately switched off — see the decision below.
+implemented and tested but switched off — see the decisions below.
 
 All four work the same way:
 the customer picks a file in the provider's own picker, the browser receives a
@@ -19,7 +19,7 @@ is, and that follows the file into the studio queue.
 | Source | Quality | Reality |
 |---|---|---|
 | **Dropbox** | ✅ original | A file sync service — bytes come back unmodified. Best fit. |
-| **Lightroom** | ⚠️ conditional | Depends on Adobe entitlement — see below. Originals are gated separately from renditions. |
+| **Lightroom** | ⚠️ depends on the customer | Full resolution if their originals live in the Lightroom cloud; 2048px if they sync from Lightroom Classic. See below. |
 | **Flickr** | ⚠️ conditional | Has an "Original" size, but only serves it if the account owner allows original access. Otherwise you get a resized copy. |
 | **Google Photos** | ❌ compressed | See below. Weakest fit for print. |
 
@@ -100,6 +100,57 @@ which is why they are configuration rather than code:
 - **Dropbox** — register at dropbox.com/developers, add the domain to the app's
   Chooser allowlist, drop in the Chooser script and pass `linkType: 'direct'`.
   Easiest by far and the best quality; do this one first.
+### Lightroom resolution depends on the customer, not on us
+
+The integration works end to end: OAuth sign-in, catalogue, albums, thumbnails,
+import. Whether it returns the ORIGINAL depends on how that customer's photos
+reached Adobe's cloud — and the API gives no way to know in advance.
+
+- **Photos added through Lightroom desktop or mobile** — the original is stored
+  in the cloud. `/master` works and the import is full resolution.
+- **Photos synced from Lightroom Classic** — Classic uploads only **2560px
+  smart previews** and *cannot sync originals at all*. `/master` answers 403
+  because the original is not there; the ceiling is a 2048px rendition.
+
+That second case is what a test account showed, which initially looked like an
+Adobe entitlement refusal. It is not — it is a Lightroom Classic sync
+limitation, and it is the customer's workflow rather than a permission we can
+request.
+
+Measured against that Classic-synced account:
+
+```
+/assets/{id}/master              403  {"code":"403000"}        entitlement
+/assets/{id}/renditions/fullsize 404  "not in asset"           not generated
+POST renditions (X-Generate-Renditions: fullsize)
+                                 410  Gone                     not available
+```
+
+So the ceiling is **2048px**. Against this studio's own DPI thresholds:
+
+| size | dpi | verdict |
+|---|---|---|
+| 5×7 | 293 | sharp |
+| 8×10 | 205 | could be sharper |
+| 11×14 | 146 | **blocked** |
+| 16×20 | 102 | **blocked** |
+| 30×40 | 51 | **blocked** |
+
+Pochron sells up to 30×40. A source that fails at 11×14 and above would mostly
+produce customers who connect their Adobe account, pick a photo, and are then
+told it is too small — a worse experience than never offering it, and the same
+reasoning that excluded Google Photos.
+
+So the connector stays enabled — for a photographer using cloud Lightroom it
+delivers the original — but it is registered **conditional**, never original,
+and every import reports what it actually received. When only a preview was
+available the customer is told *why*, so they look at their Lightroom sync
+settings rather than blaming the studio.
+
+**To test which case an account is in:** add a photo directly in Lightroom
+desktop or on lightroom.adobe.com (not Classic), then import that photo here.
+If it arrives at full resolution, originals are in the cloud.
+
 - **Lightroom** — WORKING, WITH A CAVEAT. Adobe Developer Console project with an
   **OAuth Web App** credential; entitlement for `lr_partner_apis` was granted.
 

@@ -35,13 +35,16 @@ export const CONNECTORS = {
   lightroom: {
     id: 'lightroom',
     label: 'Adobe Lightroom',
-    // MEASURED, not assumed. Adobe gates original-file (`master`) access
-    // separately from renditions: with rendition-only entitlement, /master
-    // returns 403 and the best available is a full-resolution render or, worse,
-    // a 2048px preview. The import records what it actually received, so a
-    // photo is never labelled original when it isn't.
+    // Quality depends on how the customer's photos got into Lightroom, which
+    // the API cannot tell us in advance:
+    //   - added via Lightroom desktop/mobile (cloud)  -> original IS in the
+    //     cloud, /master works, full resolution
+    //   - synced from Lightroom Classic               -> only a 2560px smart
+    //     preview is uploaded; Classic cannot sync originals at all, so
+    //     /master answers 403 and 2048px is the ceiling
+    // So this is 'conditional', and every import reports what it actually got.
     quality: 'conditional',
-    qualityNote: 'Best available from your catalogue. If Adobe will not release the original, you will be told before ordering a large print.',
+    qualityNote: 'Full resolution if your originals are stored in the Lightroom cloud. Photos synced from Lightroom Classic are previews only — we will tell you which you got.',
     hosts: ['lr.adobe.io', 'photos.adobe.io'],
     requiresServerAuth: true,   // Adobe I/O credentials, approved integration
   },

@@ -97,6 +97,17 @@ describe('print-quality provenance', () => {
     expect(CONNECTORS.lightroom.quality).toBe('conditional');
   });
 
+  // Lightroom resolution depends on how the customer's photos reached the
+  // cloud, so it must never be advertised as guaranteed original.
+  it('Lightroom is offered but never promises the original', async () => {
+    const { json } = await app.api('/api/uploads/sources');
+    const lr = json.sources.find((s) => s.id === 'lightroom');
+    if (lr) {
+      expect(lr.quality).toBe('conditional');
+      expect(lr.qualityNote).toMatch(/Classic|preview/i);
+    }
+  });
+
   it('Google Photos is flagged as possibly compressed', () => {
     expect(CONNECTORS.google_photos.quality).toBe('compressed');
   });

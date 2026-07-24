@@ -363,9 +363,18 @@ lightroomRouter.post('/import', requireToken(), async (req, res) => {
     if (quality !== 'original') {
       // Say what it actually means in inches. "Lower resolution" is abstract;
       // "good up to about 8 inches" is a decision the customer can act on.
-      note = `Adobe would not release your original file, so Lightroom sent a ${used}. `
-        + `That prints well up to roughly 8 inches on the long edge. For anything larger, `
-        + `export the original from Lightroom and upload it here instead.`;
+      // A 403 on /master almost always means the original is not IN the cloud:
+      // Lightroom Classic syncs only 2560px smart previews and cannot upload
+      // originals at all. Photos added through Lightroom desktop or mobile do
+      // store their originals, and those import at full resolution. Saying
+      // "Adobe refused" would send the customer to complain to the wrong place.
+      const classicLikely = tried.some((t) => t.startsWith('master=403'));
+      note = classicLikely
+        ? `Only a preview of this photo is in your Lightroom cloud, so we could not get your original. `
+          + `That happens when photos are synced from Lightroom Classic, which uploads 2560px smart previews rather than originals. `
+          + `This preview prints well up to roughly 8 inches on the long edge — for anything larger, export the original from Lightroom and upload it here.`
+        : `Lightroom sent a ${used} rather than your original file. `
+          + `That prints well up to roughly 8 inches on the long edge; for anything larger, export the original and upload it here.`;
       console.warn(`Lightroom: fell back to ${used} for ${assetId} (${tried.join(', ')})`);
     }
 
