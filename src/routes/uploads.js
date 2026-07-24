@@ -243,6 +243,34 @@ uploadsRouter.delete('/:fileId', (req, res) => {
   res.json({ removed: true });
 });
 
+// GET /api/uploads/mine — the files in this visitor's current draft.
+//
+// Without this the browser and the server disagree after any page reload: the
+// cart looks empty while the server still holds the files, and the visitor is
+// told they have reached the limit with nothing on screen. Autosave is only
+// half a feature without restore (§5).
+uploadsRouter.get('/mine', (req, res) => {
+  const token = getOrSetDraftToken(req, res);
+  const rows = db.prepare(
+    `SELECT id, original_name, width, height, best_dpi, bytes, storage_key, source, source_quality, status
+       FROM files
+      WHERE owner_token = ? AND order_id IS NULL AND status IN ('uploaded','validated','processing')
+      ORDER BY created_at ASC`
+  ).all(token);
+  res.json({
+    limit: config.uploads.maxFiles,
+    files: rows.map((f) => ({
+      fileId: f.id,
+      name: f.original_name,
+      width: f.width, height: f.height,
+      bestDpi: f.best_dpi,
+      sizeBytes: f.bytes,
+      source: f.source, quality: f.source_quality,
+      url: storage.publicUrl(f.storage_key),
+    })),
+  });
+});
+
 // GET /api/uploads/file/:key — LOCAL driver preview/serving (dev). In production
 // originals live behind the CDN with per-customer access control (§13).
 uploadsRouter.get('/file/*', async (req, res) => {

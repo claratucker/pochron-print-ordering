@@ -886,11 +886,12 @@ async function lrShowAssets(albumId){
 }
 
 async function lrImport(assetId,name,btn){
-  if(state.photos.length>=MAX_FILES){$("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help">You've reached ${MAX_FILES} photos.</div>`);return;}
+  if(state.photos.length>=MAX_FILES){noticeAtLimit(`You've reached ${MAX_FILES} photos.`);return;}
   btn.style.opacity=".4"; btn.disabled=true;
   const r=await apiReq("/connectors/lightroom/import",{method:"POST",
     body:JSON.stringify({catalogId:LR_CATALOG,assetId,filename:name})});
   if(!r.ok){btn.style.opacity="1";btn.disabled=false;
+    if(r.j&&r.j.code==="MAX_FILES"){noticeAtLimit(r.j.error);return;}
     const why=(r.j&&r.j.error)||"Import failed.";
     const extra=(r.j&&r.j.detail&&r.j.detail!==why)?` <span style="opacity:.7">(${String(r.j.detail).slice(0,120)})</span>`:"";
     $("lrGrid").insertAdjacentHTML("afterbegin",`<div class="help" style="color:var(--bad)">${why}${extra}</div>`);return;}
@@ -947,6 +948,21 @@ function addFiles(list){
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function notice(html){const el=$("capMsg");if(!el)return;el.innerHTML=html;el.style.display="block";}
+
+/* Hitting the limit must never be a dead end. This clears the draft on the
+   SERVER as well as in the browser — the two disagreeing is what made this
+   confusing in the first place. */
+function noticeAtLimit(msg){
+  notice(`${msg} <button type="button" id="startOver" class="linkish">Start a new order</button>`);
+  const b=$("startOver"); if(!b)return;
+  b.onclick=async()=>{
+    if(!confirm("Remove all photos and start a new order?"))return;
+    try{ await apiReq("/draft",{method:"DELETE"}); }catch(e){}
+    state.photos=[];state.activeId=null;state.dpiAck=false;
+    $("capMsg").style.display="none";
+    renderFiles();syncNav();updateTotals();goStep(1);
+  };
+}
 /* Production note: raising the 500 MB cap safely means uploading direct-to-cloud with
    resumable / chunked transfer (S3 multipart or the tus protocol) instead of a POST
    through the app server. Filerobot supports streaming uploads larger than 500 MB. */
@@ -1253,7 +1269,30 @@ $("newOrderBtn").onclick=()=>location.reload();
 
 
 /* ---- boot: pull live prices from the server ---- */
+/* Restore whatever this visitor already has on the server. Without it the cart
+   looks empty after a reload while the server still holds the files, and they
+   are told they have hit the limit with nothing on screen. */
+async function restoreDraft(){
+  try{
+    const {ok,j}=await apiReq("/uploads/mine");
+    if(!ok||!j.files||!j.files.length)return;
+    for(const f of j.files){
+      if(state.photos.some(p=>p.fileId===f.fileId))continue;
+      const photo={id:uid++,name:f.name,url:f.url,w:f.width||0,h:f.height||0,
+        paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
+        julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,
+        fileId:f.fileId,source:f.source||null};
+      photo.size=defaultSize(photo);
+      state.photos.push(photo);
+    }
+    if(!state.activeId&&state.photos.length)state.activeId=state.photos[0].id;
+    renderFiles();syncNav();updateTotals();
+    if($("resumeNote"))$("resumeNote").style.display="block";
+  }catch(e){/* a failed restore must never block a fresh order */}
+}
+
 loadSources();
+restoreDraft();
 syncCatalog().then(ok=>{
   if(!ok)return;
   if(typeof renderSizes==="function")try{renderSizes();}catch(e){}

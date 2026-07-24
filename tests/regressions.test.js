@@ -133,6 +133,26 @@ describe('regressions', () => {
     expect(next.ok, JSON.stringify(next.json)).toBe(true);
   });
 
+  // BUG: autosave was built without restore. After a page reload the browser
+  // showed an empty cart while the server still held the files, so the visitor
+  // was told they had hit the 12-photo limit with nothing on screen.
+  it('the server can hand a returning visitor their draft back', async () => {
+    app.resetCookie();
+    const a = await app.uploadImage('resume-1.png', 3000, 2400);
+    const b = await app.uploadImage('resume-2.png', 2400, 3000);
+
+    // Same cookie, as if the page had been reloaded.
+    const mine = await app.api('/api/uploads/mine');
+    expect(mine.status).toBe(200);
+    const ids = mine.json.files.map((f) => f.fileId);
+    expect(ids).toContain(a.fileId);
+    expect(ids).toContain(b.fileId);
+    // Enough to rebuild the cart without re-uploading.
+    const first = mine.json.files.find((f) => f.fileId === a.fileId);
+    expect(first.width).toBe(3000);
+    expect(first.url).toBeTruthy();
+  });
+
   // BUG: metadata came back null for larger images because the file hadn't
   // finished flushing to disk before it was read back.
   it('image dimensions are read correctly at a range of sizes', async () => {
