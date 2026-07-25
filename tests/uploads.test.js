@@ -49,6 +49,35 @@ describe('upload validation', () => {
     expect(over.json.code).toBe('MAX_FILES');
   });
 
+  it('releases slots held by abandoned (stale pending) uploads', async () => {
+    app.resetCookie();
+    const ids = [];
+    for (let i = 0; i < 12; i++) {
+      const r = await app.api('/api/uploads/init', { method: 'POST',
+        body: { filename: `p${i}.png`, sizeBytes: 1000, mime: 'image/png' } });
+      ids.push(r.json.fileId);
+    }
+    // 12 slots reserved by init, none completed -> the order is "full".
+    const blocked = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'over.png', sizeBytes: 1000, mime: 'image/png' } });
+    expect(blocked.status).toBe(409);
+
+    // Those uploads never finished and are now old (a failed PUT / closed tab).
+    const { default: Database } = await import('better-sqlite3');
+    const { join } = await import('node:path');
+    const db = new Database(join(process.env.DATA_DIR, 'pochron.db'));
+    db.prepare(
+      `UPDATE files SET created_at = datetime('now','-2 days') WHERE id IN (${ids.map(() => '?').join(',')})`
+    ).run(...ids);
+    db.close();
+
+    // The next limit check reaps them, so the slots free up instead of being
+    // held forever by files the customer never sees.
+    const room = await app.api('/api/uploads/init', { method: 'POST',
+      body: { filename: 'fresh.png', sizeBytes: 1000, mime: 'image/png' } });
+    expect(room.ok, JSON.stringify(room.json)).toBe(true);
+  });
+
   it('removing a photo frees its slot', async () => {
     app.resetCookie();
     const ids = [];
