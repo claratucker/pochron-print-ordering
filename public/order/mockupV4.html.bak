@@ -135,10 +135,6 @@
     /* The white paper needs no outline — it reads on its own against the darker
      surround, the way a print does against a gallery wall. */
   .cropframe.bordered{background:#fff; border-color:transparent}
-  /* White-border mode shows the WHOLE image (contain, not cover), centered, on a
-     print-shaped frame; the 1/4" inset guarantees a symmetric minimum border and any
-     leftover white from the aspect difference spills evenly. Nothing to pan -> no grab. */
-  .cropframe.bordered img{object-fit:contain; object-position:50% 50%; cursor:default}
   .previewcol{background:var(--surround); background-image:var(--surround-grad); padding:14px; border-radius:3px}
   .previewcol .cropframe{border-color:rgba(0,0,0,.18)}
   /* The caption sits on the dark surround, so it needs a light value to stay
@@ -671,14 +667,14 @@ function openPhotoEditor(p){
   document.addEventListener("keydown",onKey);
   cancelBtn.onclick=cleanup;
 
-  const[rw,rh]=orientedDims(p);const ratio=rw/rh;const ratioLabel=rw+"×"+rh;
+  const ratio=sizeRatio(p.size);
   try{
     editor=new FIE(host,{
       source:p.url,
       defaultTabId:TABS.ADJUST,
       tabsIds:[TABS.ADJUST,TABS.FINETUNE],
       // lock the crop to the ordered print size (single preset)
-      Crop: ratio ? { presetsItems:[{titleKey:"printsize",descriptionKey:ratioLabel+" print",ratio}] } : {},
+      Crop: ratio ? { presetsItems:[{titleKey:"printsize",descriptionKey:p.size+" print",ratio}] } : {},
       defaultSavedImageName:(p.name||"photo").replace(/\.[^.]+$/,""),
       // skip the file-save modal — fire onSave directly when the user clicks Save
       onBeforeSave:()=>false,
@@ -730,12 +726,6 @@ function dpiFor(p){return dpiAtSize(p,p.size);}
 function sizeArea(s){const[a,b]=dims(s);return a*b;}
 function imgAspect(p){return p.w&&p.h?Math.max(p.w,p.h)/Math.min(p.w,p.h):1;}
 function sizeAspect(s){const[a,b]=dims(s);return Math.max(a,b)/Math.min(a,b);}
-/* Catalog sizes are stored in a single orientation (e.g. "4×6" = short×long), but the
-   preview frame and the locked editor crop must follow the PHOTO's orientation, or a
-   landscape photo is framed and cropped as a portrait. Returns [w,h] oriented to the
-   photo; pricing/DPI still key off the original p.size string (both are orientation-safe). */
-function orientedDims(p){const[a,b]=dims(p.size);if(!p.w||!p.h||a===b)return[a,b];
-  const long=Math.max(a,b),short=Math.min(a,b);return (p.w>p.h)?[long,short]:[short,long];}
 function fitsAspect(p,s){return Math.abs(imgAspect(p)-sizeAspect(s))<=0.06;} // within ~6% of the photo's ratio
 function defaultSize(p){ // largest size that prints with no flag (sharp); aspect-fit preferred; never defaults to a flagged oversize
   const byAreaDesc=a=>a.slice().sort((x,y)=>sizeArea(y)-sizeArea(x));
@@ -1162,13 +1152,10 @@ p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
 }
 /* border: 'none' fills the print (may crop); 'border' adds a symmetric white border.
    The preview border scales with print size (~1/4" on the short edge). Pochron Studios sets the exact border. */
-/* Bordered frame carries the print's aspect ratio, so CSS % padding (resolved
-   against WIDTH) yields the same absolute inset on all four sides. Referencing the
-   frame's width in inches makes that a true 1/4" in either orientation. Floored at 1%. */
-function borderPct(p){const w=dims(p.size)[0];return Math.max(0.25/w*100,1);}
+function borderPct(p){const short=Math.min(...dims(p.size));return Math.max(0.25/short*100,1);}
 function renderPreview2(){
   const p=state.photos.find(x=>x.id==state.activeId)||state.photos[0];if(!p)return;
-  const[w,h]=orientedDims(p);$("frame2").style.width=(w*PX_PER_IN+48)+"px";$("frame2").style.height=(h*PX_PER_IN+48)+"px";
+  const[w,h]=dims(p.size);$("frame2").style.width=(w*PX_PER_IN+48)+"px";$("frame2").style.height=(h*PX_PER_IN+48)+"px";
   const win=$("frame2").querySelector(".window");win.style.padding='0';win.style.background='#C8C8C8';
   const img=$("preview2");img.src=p.url;img.style.objectPosition=`${p.posX}% ${p.posY}%`;
   $("scaleHint2").textContent=`${p.name} · ${p.size} in`;makeDraggable(img,p);
@@ -1193,13 +1180,9 @@ function renderCrops(){
     const fstyle=`filter:${filterString(previewAdjust)};transform:${transformString(previewAdjust)}`;
     const tint=(p.julie||useBaked)?"transparent":tintStyle(p.adjust);
     const bord=p.border!=='none';
-    // Bordered preview takes the shape of the actual print so the white margin the
-    // customer sees is the real margin; fill mode keeps the square repositioning frame.
-    const[pw,ph]=orientedDims(p);
-    const frameStyle=bord?` style="padding:${borderPct(p)}%;aspect-ratio:${pw}/${ph}"`:'';
     return `<div class="crop">
       <div class="previewcol">
-        <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${frameStyle}><img src="${previewSrc}" style="object-position:${bord?'50% 50%':`${p.posX}% ${p.posY}%`};${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
+        <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${bord?` style="padding:${borderPct(p)}%"`:''}><img src="${previewSrc}" style="object-position:${p.posX}% ${p.posY}%;${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
         <div class="draghint">${useBaked?'your edit · ':''}${bord?'white border · your whole image fits':'drag to reposition · fills the print'} · ${p.size} in · <span class="badge ${cls}"><span class="dot ${cls}"></span>${dpi} dpi · ${lab}</span></div>
         <div class="presentation">
           <div class="pfield"><label>Border</label><select data-f="border" data-id="${p.id}">${Object.entries(BORDERS).map(([k,v])=>`<option value="${k}" ${k===p.border?"selected":""}>${v.label}</option>`).join("")}</select></div>
@@ -1404,18 +1387,12 @@ $("newOrderBtn").onclick=()=>location.reload();
 /* Restore whatever this visitor already has on the server. Without it the cart
    looks empty after a reload while the server still holds the files, and they
    are told they have hit the limit with nothing on screen. */
-function loadable(url){return new Promise(r=>{const im=new Image();im.onload=()=>r(true);im.onerror=()=>r(false);im.src=url;});}
 async function restoreDraft(){
   try{
     const {ok,j}=await apiReq("/uploads/mine");
     if(!ok||!j.files||!j.files.length)return;
-    // Only restore files whose preview actually loads. One that fails (an upload
-    // that never truly landed, or a since-deleted object) is released server-side
-    // and skipped, so resuming an order never shows a broken thumbnail.
-    const checked=await Promise.all(j.files.map(async f=>({f,good:await loadable(f.url)})));
-    for(const {f,good} of checked){
+    for(const f of j.files){
       if(state.photos.some(p=>p.fileId===f.fileId))continue;
-      if(!good){apiReq(`/uploads/${f.fileId}`,{method:"DELETE"}).catch(()=>{});continue;}
       const photo={id:uid++,name:f.name,url:f.url,w:f.width||0,h:f.height||0,
         paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
         julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,

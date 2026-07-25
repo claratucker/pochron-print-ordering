@@ -362,8 +362,14 @@ uploadsRouter.post('/google-drive/import', async (req, res) => {
 // GET /api/uploads/file/:key — LOCAL driver preview/serving (dev). In production
 // originals live behind the CDN with per-customer access control (§13).
 uploadsRouter.get('/file/*', async (req, res) => {
-  if (storage.name !== 'local') return res.status(404).end();
   const key = decodeURIComponent(req.params[0]);
+  // S3/R2: hand the browser a short-lived signed URL and let it fetch the object
+  // directly from the bucket (private bucket stays private; R2 egress is free).
+  if (storage.name === 's3') {
+    try { return res.redirect(302, await storage.signedGetUrl(key)); }
+    catch { return res.status(404).end(); }
+  }
+  if (storage.name !== 'local') return res.status(404).end();
   const buffer = await storage.getBuffer(key);
   if (!buffer) return res.status(404).end();
   res.setHeader('Content-Type', 'application/octet-stream');

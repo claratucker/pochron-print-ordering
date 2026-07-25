@@ -220,8 +220,24 @@ const s3Driver = {
     await S3Client.send(new PutObjectCommand({ Bucket: config.storage.bucket, Key: storageKey, Body: buffer }));
     return { storageKey, bytes: buffer.length };
   },
+  // A short-lived signed GET URL, re-signed on every call so it's never stale.
+  // Used by the /api/uploads/file route to redirect the browser straight to R2
+  // (keeps the bucket private, and R2 egress is free so no reason to proxy).
+  async signedGetUrl(storageKey) {
+    const { S3Client, mod } = await this._client();
+    const { GetObjectCommand } = mod;
+    const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+    return getSignedUrl(S3Client,
+      new GetObjectCommand({ Bucket: config.storage.bucket, Key: storageKey }),
+      { expiresIn: config.storage.presignTtl });
+  },
+  // A same-origin URL the browser can load. If a public CDN/custom domain is
+  // configured we use it directly; otherwise the file route redirects to a
+  // signed URL. Never return an s3:// URI — a browser <img> can't render it.
   publicUrl(storageKey) {
-    return config.storage.cdnBase ? `${config.storage.cdnBase}/${storageKey}` : `s3://${config.storage.bucket}/${storageKey}`;
+    return config.storage.cdnBase
+      ? `${config.storage.cdnBase}/${storageKey}`
+      : `/api/uploads/file/${encodeURIComponent(storageKey)}`;
   },
 };
 

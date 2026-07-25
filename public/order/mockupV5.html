@@ -1404,12 +1404,18 @@ $("newOrderBtn").onclick=()=>location.reload();
 /* Restore whatever this visitor already has on the server. Without it the cart
    looks empty after a reload while the server still holds the files, and they
    are told they have hit the limit with nothing on screen. */
+function loadable(url){return new Promise(r=>{const im=new Image();im.onload=()=>r(true);im.onerror=()=>r(false);im.src=url;});}
 async function restoreDraft(){
   try{
     const {ok,j}=await apiReq("/uploads/mine");
     if(!ok||!j.files||!j.files.length)return;
-    for(const f of j.files){
+    // Only restore files whose preview actually loads. One that fails (an upload
+    // that never truly landed, or a since-deleted object) is released server-side
+    // and skipped, so resuming an order never shows a broken thumbnail.
+    const checked=await Promise.all(j.files.map(async f=>({f,good:await loadable(f.url)})));
+    for(const {f,good} of checked){
       if(state.photos.some(p=>p.fileId===f.fileId))continue;
+      if(!good){apiReq(`/uploads/${f.fileId}`,{method:"DELETE"}).catch(()=>{});continue;}
       const photo={id:uid++,name:f.name,url:f.url,w:f.width||0,h:f.height||0,
         paper:"pg-baryta",size:"8\u00d710",border:"none",qty:1,posX:50,posY:50,
         julie:false,adjust:blankAdjust(),recipe:null,editedPreview:null,
