@@ -73,12 +73,15 @@
 
   /* items */
   .items{padding:6px 18px 2px}
-  .it{display:grid;grid-template-columns:64px 1fr auto auto;gap:14px;align-items:center;
+  .it{display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;
     padding:12px 0;border-bottom:1px solid var(--line)}
   .it:last-child{border-bottom:0}
   .thumb{width:64px;height:64px;border-radius:3px;object-fit:cover;background:var(--paper3);
     border:1px solid var(--line);display:block}
   .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--soft);font-size:10px;text-align:center}
+  .thumbs{display:flex;gap:8px;align-items:flex-start}
+  .tw{display:flex;flex-direction:column;gap:3px;align-items:center}
+  .tw figcaption{font-size:9px;color:var(--soft);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
   .iname{font-size:13.5px}
   .ispec{font-size:12px;color:var(--soft);font-family:"SFMono-Regular",Menlo,Consolas,monospace}
   .tags{margin-top:5px;display:flex;gap:6px;flex-wrap:wrap}
@@ -286,14 +289,17 @@ function itemRow(o,i,canAct){
   const dpi = `<span class="tag ${dpiTagClass(i.dpiFlag)}">${dpiLabel(i.dpiFlag)}${i.dpi?(' · '+i.dpi+' dpi'):''}</span>`;
   const recipe = (i.colorPath==='self' && i.adjust)
     ? `<div class="recipe">recipe: ${esc(Object.entries(i.adjust).filter(([,v])=>v).map(([k,v])=>k+' '+v).join('  ') || 'crop/framing only')}</div>` : '';
-  const orig = i.originalUrl ? `<div class="orig"><a href="${esc(i.originalUrl)}" target="_blank" rel="noopener">open original</a> · prints from original</div>` : '';
-  const thumb = i.originalUrl
-    ? `<img class="thumb" src="${esc(i.originalUrl)}" alt="" onerror="this.classList.add('ph');this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb ph',textContent:'no preview'}))">`
-    : `<div class="thumb ph">no file</div>`;
+  const thumbImg=(url,label)=>`<figure class="tw"><img class="thumb" src="${esc(url)}" alt="" loading="lazy" onerror="this.classList.add('ph');this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb ph',textContent:'no preview'}))">${label?`<figcaption>${label}</figcaption>`:''}</figure>`;
+  const thumbs = i.editedUrl
+    ? `<div class="thumbs">${thumbImg(i.editedUrl,"Customer's edit")}${i.originalUrl?thumbImg(i.originalUrl,'Original'):''}</div>`
+    : (i.originalUrl ? thumbImg(i.originalUrl,'') : `<div class="thumb ph">no file</div>`);
+  const orig = i.editedUrl
+    ? `<div class="orig"><a href="${esc(i.editedUrl)}" target="_blank" rel="noopener">open edit</a> · <a href="${esc(i.originalUrl)}" target="_blank" rel="noopener">open original</a> · prints the customer's edit</div>`
+    : (i.originalUrl ? `<div class="orig"><a href="${esc(i.originalUrl)}" target="_blank" rel="noopener">open original</a> · prints from original</div>` : '');
   const sel = canAct ? `<label class="isel"><input type="checkbox" class="pick" data-item="${i.id}" checked> approve</label>` : '';
   return `
   <div class="it">
-    ${thumb}
+    ${thumbs}
     <div>
       <div class="iname">${esc(i.name || 'photo')}</div>
       <div class="ispec">${esc(i.paper)} · ${esc(i.size)} · ×${i.qty}${i.px?(' · '+esc(i.px)+' px'):''}</div>

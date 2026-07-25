@@ -111,6 +111,28 @@ describe('proofing workflow', () => {
     expect(order.items[0].originalUrl).toBeTruthy();
   });
 
+  it('the studio can see the customer\'s edited version, not only the original', async () => {
+    app.resetCookie();
+    const f = await app.uploadImage('edit.png', 3000, 2400);
+    const order = await app.api('/api/orders', { method: 'POST', body: {
+      items: [{ fileId: f.fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 1,
+        colorPath: 'self', adjust: { brightness: 1.15, contrast: 1.1 }, posX: 50, posY: 50 }],
+      contact: { name: 'Edit Tester', email: 'edit@example.com' },
+      shipping: { addr1: '1 A St', city: 'Brooklyn', state: 'NY', zip: '11215', method: 'standard' },
+    }});
+    expect(order.status).toBe(201);
+
+    const queue = await app.api('/api/studio/queue', { studio: true });
+    const item = queue.json.queue.find((x) => x.ref === order.json.ref).items[0];
+    expect(item.editedUrl).toBeTruthy();     // Julie is offered the edited view…
+    expect(item.originalUrl).toBeTruthy();   // …alongside the original
+
+    // And the edited endpoint renders an actual image (recipe applied to the original).
+    const img = await app.api(item.editedUrl, { studio: true });
+    expect(img.status).toBe(200);
+    expect(img.headers.get('content-type')).toContain('image/');
+  });
+
   it('a normal order ships under the Pochron return address', async () => {
     const order = await placeOrder('normal.png');
     expect(order.returnAddress).toContain('Pochron Studios');

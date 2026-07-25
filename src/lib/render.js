@@ -29,7 +29,7 @@ export function recipeIsNoop(r = {}) {
 
 // Apply the recipe to an image buffer and return a print-ready buffer.
 // `format` controls output; TIFF keeps 16-bit depth for print, else high-q JPEG.
-export async function renderRecipe(inputBuffer, recipe = {}, { format = 'tiff' } = {}) {
+export async function renderRecipe(inputBuffer, recipe = {}, { format = 'tiff', maxDim = null } = {}) {
   if (!sharp) throw new Error('sharp is not installed; cannot render recipe.');
   const r = recipe || {};
   let img = sharp(inputBuffer, { failOn: 'none' });
@@ -68,6 +68,10 @@ export async function renderRecipe(inputBuffer, recipe = {}, { format = 'tiff' }
     const rMul = 1 + 0.15 * k, bMul = 1 - 0.15 * k;
     img = img.linear([rMul, 1, bMul], [0, 0, 0]);
   }
+
+  // Optional downscale — used for on-screen previews (the print path passes no
+  // maxDim, so full resolution is preserved). Never enlarges.
+  if (maxDim) img = img.resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true });
 
   return format === 'tiff'
     ? img.tiff({ compression: 'lzw' }).toBuffer()

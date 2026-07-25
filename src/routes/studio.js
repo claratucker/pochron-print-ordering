@@ -85,6 +85,10 @@ studioRouter.get('/queue', (req, res) => {
         originalUrl: i.file_id ? storage.publicUrl(
           db.prepare('SELECT storage_key FROM files WHERE id=?').get(i.file_id)?.storage_key || ''
         ) : null,
+        // The customer's edited version, rendered on demand from recipe + original,
+        // so Julie can SEE what will print — not just the raw file.
+        editedUrl: (i.color_path === 'self' && i.adjust_recipe && !recipeIsNoop(JSON.parse(i.adjust_recipe)))
+          ? `/api/studio/orders/${o.id}/items/${i.id}/edited` : null,
       })),
       messages: full.messages,
     };
@@ -273,6 +277,30 @@ studioRouter.post('/orders/:id/refund', async (req, res) => {
   transition(order.id, 'cancelled', `Refunded $${Number(amount).toFixed(2)}`);
   try { await emails.refunded(getOrder(order.id), amount); } catch (e) { console.error('Refund email failed:', e.message); }
   res.json({ ok: true, ref: order.ref, status: 'cancelled', refunded: amount });
+});
+
+// GET /api/studio/orders/:orderId/items/:itemId/edited — the customer's edited
+// version (their recipe applied to the full-res original), rendered on demand as a
+// downscaled JPEG so Julie can see exactly what will print. The recipe + original
+// remain the source of truth; this is just a viewable proof of them.
+studioRouter.get('/orders/:orderId/items/:itemId/edited', async (req, res) => {
+  const item = db.prepare('SELECT * FROM order_items WHERE id=? AND order_id=?')
+    .get(+req.params.itemId, +req.params.orderId);
+  if (!item || item.color_path !== 'self') return res.status(404).end();
+  const recipe = item.adjust_recipe ? JSON.parse(item.adjust_recipe) : {};
+  const file = db.prepare('SELECT storage_key FROM files WHERE id=?').get(item.file_id);
+  if (!file) return res.status(404).end();
+  try {
+    const original = await storage.getBuffer(file.storage_key);
+    if (!original) return res.status(404).end();
+    const jpeg = await renderRecipe(original, recipe, { format: 'jpeg', maxDim: 1600 });
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(jpeg);
+  } catch (e) {
+    console.error('Edited preview render failed:', e.message);
+    res.status(500).end();
+  }
 });
 
 // POST /api/studio/orders/:id/reauthorize — the authorization has lapsed (or is
