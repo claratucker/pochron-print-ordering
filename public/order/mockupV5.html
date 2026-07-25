@@ -331,7 +331,7 @@
     <!-- STEP 3 -->
     <div class="step-panel hidden" id="panel3">
       <h2 class="step-h">Edit, crop &amp; review</h2>
-      <p class="step-sub">Set the crop and border. Then choose one option. Edit the color yourself, or let Pochron Studios perfect it from your original.</p>
+      <p class="step-sub">Set the crop and border. Then choose one option: edit the color yourself, or let Pochron Studios perfect it from your original.</p>
       <div id="cropList"></div>
       <div class="archnote" style="margin:18px 0">Every print is reviewed before it's made. We read your edits alongside your original, and we'll reach out if anything looks unintended. For retouching, restoration, or more involved work, <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">contact our full-service studio</a>.</div>
       <div id="dpiGate3"></div>
@@ -376,7 +376,6 @@
         <div id="wlNameWrap" class="hidden" style="margin-top:11px">
           <label class="fld" for="whiteLabelName">Sender name on the package <span style="color:var(--flag-bad)">*</span></label>
           <input id="whiteLabelName" type="text" maxlength="120" placeholder="Your business name, as it should appear" autocomplete="organization">
-          <div class="help" style="margin-top:5px">This is what your client sees as the sender. We ship from 117 9th Street, Rm #210, Brooklyn, NY 11215 under this name — never Pochron Studios.</div>
         </div>
       </div>
 
@@ -751,10 +750,10 @@ function tooSmallList(){return state.photos.filter(p=>dpiFor(p)<DPI_MIN);}
 function dpiGateHTML(){
   const ts=tooSmallList(); if(!ts.length)return "";
   const hopeless=ts.filter(tooSmallEverywhere);
-  let body=`${ts.length} image${ts.length>1?'s':''} may not print sharp at the size chosen. ${ts.length>1?'They are':'It is'} lower resolution than we recommend and may look soft or pixelated.`;
-  if(hopeless.length)body+=` ${hopeless.length>1?`${hopeless.length} of them are`:'One is'} small even for our smallest size. For the best result you can <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">contact the studio</a> about a custom small print.`;
-  body+=` You can still print as-is. Check the box and Pochron Studios will review your order and reach out with any questions.`;
-  return `<div class="co-sec dpigate"><label class="cc" style="border:0;padding:0;background:transparent"><input type="checkbox" class="dpiAck" ${state.dpiAck?'checked':''}><span><span class="lbl">Some images may not print sharp</span><span class="help">${body}</span></span></label></div>`;
+  let body=`${ts.length} image${ts.length>1?'s':''} ${ts.length>1?'are':'is'} below the resolution we recommend for the size chosen and may look soft.`;
+  if(hopeless.length)body+=` ${hopeless.length>1?'Some are':'One is'} too small even for our smallest size — <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">contact the studio</a> for a custom print.`;
+  body+=` You can print as-is; we review every order and will reach out with any questions.`;
+  return `<div class="co-sec dpigate"><label class="cc" style="border:0;padding:0;background:transparent"><input type="checkbox" class="dpiAck" ${state.dpiAck?'checked':''}><span><span class="lbl">Some images may print soft</span><span class="help">${body}</span></span></label></div>`;
 }
 function refreshDpiGates(){
   ["dpiGate","dpiGate3"].forEach(id=>{const el=$(id);if(el)el.innerHTML=dpiGateHTML();});

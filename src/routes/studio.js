@@ -62,10 +62,10 @@ studioRouter.get('/queue', (req, res) => {
       taxStatus: o.tax_status || 'none',
       auth: (() => { const w = authWindow(o); return { ...w, label: authLabel(w) }; })(),
       taxNeedsReview: o.tax_status === 'failed',
-      // White-label parcels ship under the CUSTOMER's business name at the
-      // studio's drop address — no Pochron branding (§10).
+      // White-label parcels ship under the CUSTOMER's business name, with no
+      // Pochron branding — Julie sends from wherever she ships, under this name.
       returnAddress: o.white_label
-        ? `${o.white_label_name || 'Sender'}\n${config.fulfillment.dropAddress}`
+        ? (o.white_label_name || 'Sender')
         : config.fulfillment.studioReturnAddress,
       items: full.items.map((i) => ({
         id: i.id, name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,
