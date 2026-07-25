@@ -100,10 +100,12 @@
   .thread .m .fromst{color:var(--petrol);font-weight:600}
   .thread .m .fromcu{color:var(--soft);font-weight:600}
   .actions{padding:14px 18px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line)}
-  .shipto{padding:11px 18px;border-top:1px solid var(--line);background:var(--paper3)}
-  .shipto .lbl{text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:var(--soft);font-weight:600}
-  .shipto .addr{font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:13px;line-height:1.55;margin-top:3px}
-  .shipto .ph{color:var(--soft)}
+  .parcels{display:flex;gap:30px;flex-wrap:wrap;padding:11px 18px;border-top:1px solid var(--line);background:var(--paper3)}
+  .parcels .pcol{min-width:170px}
+  .parcels .lbl{text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:var(--soft);font-weight:600}
+  .parcels .addr{font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:13px;line-height:1.55;margin-top:3px}
+  .parcels .ph{color:var(--soft)}
+  .parcels .ret .addr{color:var(--soft)}   /* Julie's own return address — de-emphasized vs. the ship-to */
   .holdbox{flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px}
   .holdrow{display:flex;gap:8px}
   .shiprow{display:flex;gap:8px;align-items:center}
@@ -248,9 +250,15 @@ function orderCard(o){
       <span class="tot">${money(o.total)}</span>
       <span class="when">${new Date(o.createdAt.replace(' ','T')+'Z').toLocaleString()}</span>
     </div>
-    <div class="shipto">
-      <span class="lbl">Ship to</span>
-      <div class="addr">${esc(o.shipTo||'—').replace(/\n/g,'<br>')}${o.phone ? `<br><span class="ph">☎ ${esc(o.phone)}</span>` : ''}</div>
+    <div class="parcels">
+      <div class="pcol">
+        <span class="lbl">Ship to</span>
+        <div class="addr">${esc(o.shipTo||'—').replace(/\n/g,'<br>')}${o.phone ? `<br><span class="ph">☎ ${esc(o.phone)}</span>` : ''}</div>
+      </div>
+      <div class="pcol ret">
+        <span class="lbl">Return address${o.whiteLabel ? ' · white-label' : ''}</span>
+        <div class="addr">${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
+      </div>
     </div>
     <div class="items">${items}</div>
     ${thread}
@@ -317,7 +325,6 @@ function actionsBlock(o){
       Send the customer a link to re-confirm — nothing is charged until you approve.
       <div style="margin-top:9px"><button class="reauth">Send re-authorization request</button></div>
     </div>` : ''}
-    <div class="note" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace">Return address for this parcel:<br>${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
 function shipOnlyBlock(o){
@@ -328,7 +335,6 @@ function shipOnlyBlock(o){
       <button class="ship">Mark shipped</button>
     </div>
     <div class="note">Notifies the customer that ${esc(o.ref)} is on its way.</div>
-    <div class="note" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace">Return address for this parcel:<br>${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
   </div>`;
 }
 

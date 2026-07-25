@@ -74,11 +74,11 @@ export const config = {
   // address and no studio branding or inserts.
   fulfillment: {
     studioReturnAddress: process.env.STUDIO_RETURN_ADDRESS
-      || 'Pochron Studios\n117 9th Street, Rm #210\nBrooklyn, NY 11215',
+      || 'Pochron Studios\n207 Haight Hill Rd\nStanfordville, NY 12581',
     // White-label parcels ship from the same place but under the CUSTOMER's
     // own business name, so only the street portion is configured here.
     dropAddress: process.env.DROP_ADDRESS
-      || '117 9th Street, Rm #210\nBrooklyn, NY 11215',
+      || '207 Haight Hill Rd\nStanfordville, NY 12581',
   },
 
   // Email verification (§8 layer 3). none | kickbox | zerobounce
