@@ -34,6 +34,9 @@ describe('proofing workflow', () => {
     const order = await placeOrder('flow.png');
     expect(order.status).toBe('submitted');
     expect(order.items.length).toBe(1);
+    // Julie must be able to see where to ship it.
+    expect(order.shipTo).toContain('117 9th St');
+    expect(order.shipTo).toContain('Brooklyn, NY 11215');
   });
 
   it('approval captures payment and moves the order into production', async () => {

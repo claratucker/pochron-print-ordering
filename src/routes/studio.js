@@ -34,7 +34,9 @@ studioRouter.use(requireStudio);   // every studio route is authenticated
 // GET /api/studio/queue — orders awaiting proof, plus recent history.
 studioRouter.get('/queue', (req, res) => {
   const rows = db.prepare(
-    `SELECT id, ref, status, customer_name, email, white_label, white_label_name, tax_status, total, created_at,
+    `SELECT id, ref, status, customer_name, email, phone,
+            ship_name, ship_addr1, ship_addr2, ship_city, ship_state, ship_zip, ship_country,
+            white_label, white_label_name, tax_status, total, created_at,
             payment_ref, payment_status, authorized_at, reauth_count
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
@@ -43,6 +45,16 @@ studioRouter.get('/queue', (req, res) => {
     const full = getOrder(o.id);
     return {
       id: o.id, ref: o.ref, status: o.status, who: o.customer_name, email: o.email,
+      phone: o.phone || null,
+      // Where the prints actually go. This is what Julie ships to — distinct from
+      // the return address printed on the parcel.
+      shipTo: [
+        o.ship_name || o.customer_name,
+        o.ship_addr1,
+        o.ship_addr2,
+        [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_zip ? ' ' + o.ship_zip : ''),
+        o.ship_country && !/^(us|usa|united states)$/i.test(String(o.ship_country).trim()) ? o.ship_country : null,
+      ].filter((line) => line && line.trim()).join('\n'),
       whiteLabel: !!o.white_label, total: o.total, createdAt: o.created_at,
       paymentStatus: o.payment_status || null,
       // The address that goes on the parcel: neutral for white-label (§10).

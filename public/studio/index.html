@@ -100,6 +100,10 @@
   .thread .m .fromst{color:var(--petrol);font-weight:600}
   .thread .m .fromcu{color:var(--soft);font-weight:600}
   .actions{padding:14px 18px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line)}
+  .shipto{padding:11px 18px;border-top:1px solid var(--line);background:var(--paper3)}
+  .shipto .lbl{text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;color:var(--soft);font-weight:600}
+  .shipto .addr{font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:13px;line-height:1.55;margin-top:3px}
+  .shipto .ph{color:var(--soft)}
   .holdbox{flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px}
   .holdrow{display:flex;gap:8px}
   .shiprow{display:flex;gap:8px;align-items:center}
@@ -243,6 +247,10 @@ function orderCard(o){
       <div class="grow"></div>
       <span class="tot">${money(o.total)}</span>
       <span class="when">${new Date(o.createdAt.replace(' ','T')+'Z').toLocaleString()}</span>
+    </div>
+    <div class="shipto">
+      <span class="lbl">Ship to</span>
+      <div class="addr">${esc(o.shipTo||'—').replace(/\n/g,'<br>')}${o.phone ? `<br><span class="ph">☎ ${esc(o.phone)}</span>` : ''}</div>
     </div>
     <div class="items">${items}</div>
     ${thread}
