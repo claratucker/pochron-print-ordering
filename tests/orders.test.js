@@ -44,17 +44,27 @@ describe('order submission', () => {
     expect(allowed.status).toBe(201);
   });
 
-  it('requires a sender name for white-label packaging', async () => {
+  it('requires the sender name and return address for white-label packaging', async () => {
     app.resetCookie();
     const f = await app.uploadImage('wl.png', 3000, 2400);
+    // Name only, no return address -> rejected.
     const missing = await app.api('/api/orders', { method: 'POST',
-      body: app.orderBody(f.fileId, { whiteLabel: true }) });
-    expect(missing.status).toBe(422);
-    expect(missing.json.code).toBe('NEEDS_WHITE_LABEL_NAME');
-
-    const ok = await app.api('/api/orders', { method: 'POST',
       body: app.orderBody(f.fileId, { whiteLabel: true, whiteLabelName: 'Ana Ruiz Photography' }) });
+    expect(missing.status).toBe(422);
+    expect(missing.json.code).toBe('NEEDS_WHITE_LABEL_RETURN');
+
+    // Full sender + return address -> accepted, and Julie sees it as the return address.
+    const ok = await app.api('/api/orders', { method: 'POST',
+      body: app.orderBody(f.fileId, { whiteLabel: true, whiteLabelName: 'Ana Ruiz Photography',
+        whiteLabelReturn: { addr1: '9 Mill Rd', city: 'Kingston', state: 'NY', zip: '12401' } }) });
     expect(ok.status).toBe(201);
+
+    const queue = await app.api('/api/studio/queue', { studio: true });
+    const order = queue.json.queue.find((o) => o.ref === ok.json.ref);
+    expect(order.returnAddress).toContain('Ana Ruiz Photography');
+    expect(order.returnAddress).toContain('9 Mill Rd');
+    expect(order.returnAddress).toContain('Kingston, NY 12401');
+    expect(order.returnAddress).not.toContain('Pochron');   // no Pochron branding on white-label
   });
 
   it('rejects an order referencing a file that does not exist', async () => {

@@ -139,6 +139,13 @@ ensureColumn('files', 'multipart_upload_id', 'TEXT');
 ensureColumn('files', 'source', "TEXT DEFAULT 'upload'");        // upload | dropbox | flickr | ...
 ensureColumn('files', 'source_quality', 'TEXT');                  // original | conditional | compressed
 ensureColumn('orders', 'white_label_name', 'TEXT');
+// White-label return address the customer wants printed as the sender.
+ensureColumn('orders', 'wl_addr1', 'TEXT');
+ensureColumn('orders', 'wl_addr2', 'TEXT');
+ensureColumn('orders', 'wl_city', 'TEXT');
+ensureColumn('orders', 'wl_state', 'TEXT');
+ensureColumn('orders', 'wl_zip', 'TEXT');
+ensureColumn('orders', 'wl_country', 'TEXT');
 ensureColumn('orders', 'tax_status', "TEXT DEFAULT 'none'");
 // Reset whenever the card is re-authorized, so the expiry clock restarts.
 ensureColumn('orders', 'authorized_at', 'TEXT');

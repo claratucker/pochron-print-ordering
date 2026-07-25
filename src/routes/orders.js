@@ -65,6 +65,14 @@ const OrderSchema = z.object({
   }),
   whiteLabel: z.boolean().default(false),
   whiteLabelName: z.string().trim().min(1).max(120).optional(),
+  whiteLabelReturn: z.object({
+    addr1: z.string().optional(),
+    addr2: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zip: z.string().optional(),
+    country: z.string().default('United States'),
+  }).optional(),
   emailConfirmed: z.boolean().default(false),   // customer kept their address after a typo warning
   lowResAck: z.boolean().default(false),
   paymentMethodId: z.string().optional(),   // Stripe pm_... (production)
@@ -76,7 +84,7 @@ ordersRouter.post('/', async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: 'Please complete the required fields.', details: parsed.error.flatten() });
   }
-  const { items, contact, shipping, whiteLabel, whiteLabelName, lowResAck, emailConfirmed, paymentMethodId } = parsed.data;
+  const { items, contact, shipping, whiteLabel, whiteLabelName, whiteLabelReturn, lowResAck, emailConfirmed, paymentMethodId } = parsed.data;
 
   // Email format gate (layer 1 of §8; verification API + confirmation email are the stronger layers).
   if (!EMAIL_RE.test(contact.email)) {
@@ -123,11 +131,17 @@ ordersRouter.post('/', async (req, res) => {
   // White-label parcels ship under the customer's own business name (§10), so
   // that name is required whenever the flag is set — there's nothing to print
   // on the label otherwise.
-  if (whiteLabel && !(whiteLabelName && whiteLabelName.trim())) {
-    return res.status(422).json({
-      error: 'For white-label packaging, tell us the business name to show as the sender.',
-      code: 'NEEDS_WHITE_LABEL_NAME',
-    });
+  if (whiteLabel) {
+    const r = whiteLabelReturn || {};
+    const missing = !(whiteLabelName && whiteLabelName.trim())
+      || !(r.addr1 && r.addr1.trim()) || !(r.city && r.city.trim())
+      || !(r.state && r.state.trim()) || !(r.zip && r.zip.trim());
+    if (missing) {
+      return res.status(422).json({
+        error: 'For white-label packaging, give the sender name and return address to print on the parcel.',
+        code: 'NEEDS_WHITE_LABEL_RETURN',
+      });
+    }
   }
 
   let quote;
@@ -200,14 +214,22 @@ ordersRouter.post('/', async (req, res) => {
       `INSERT INTO orders
         (ref,status,customer_name,email,phone,
          ship_name,ship_addr1,ship_addr2,ship_city,ship_state,ship_zip,ship_country,ship_method,
-         white_label,white_label_name,low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,tax_status,total,
+         white_label,white_label_name,wl_addr1,wl_addr2,wl_city,wl_state,wl_zip,wl_country,
+         low_res_ack,subtotal,discount_rate,discount_amount,shipping_cost,tax,tax_status,total,
          payment_ref,payment_status)
-       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?,?, ?,?,?,?,?,?,?, ?,?)`
+       VALUES (?, 'submitted', ?,?,?, ?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?, ?,?)`
     ).run(
       ref, contact.name, contact.email, contact.phone || null,
       shipping.name || contact.name, shipping.addr1, shipping.addr2 || null,
       shipping.city, shipping.state, shipping.zip, shipping.country || 'United States', shipping.method,
-      whiteLabel ? 1 : 0, whiteLabel ? (whiteLabelName || null) : null, lowResAck ? 1 : 0,
+      whiteLabel ? 1 : 0, whiteLabel ? (whiteLabelName || null) : null,
+      whiteLabel ? (whiteLabelReturn?.addr1 || null) : null,
+      whiteLabel ? (whiteLabelReturn?.addr2 || null) : null,
+      whiteLabel ? (whiteLabelReturn?.city || null) : null,
+      whiteLabel ? (whiteLabelReturn?.state || null) : null,
+      whiteLabel ? (whiteLabelReturn?.zip || null) : null,
+      whiteLabel ? (whiteLabelReturn?.country || 'United States') : null,
+      lowResAck ? 1 : 0,
       quote.subtotal, quote.discountRate, quote.discountAmount, quote.shippingCost, quote.tax, taxResult.status, quote.total,
       auth.paymentRef, auth.status === 'authorized' || auth.status === 'requires_capture' ? 'authorized' : auth.status
     );

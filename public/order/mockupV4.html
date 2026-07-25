@@ -374,8 +374,16 @@
           <span class="help">Ship without Pochron Studios branding. Plain, unmarked packaging, no inserts, and your own business name as the sender.</span></span>
         </label>
         <div id="wlNameWrap" class="hidden" style="margin-top:11px">
-          <label class="fld" for="whiteLabelName">Sender name on the package <span style="color:var(--flag-bad)">*</span></label>
-          <input id="whiteLabelName" type="text" maxlength="120" placeholder="Your business name, as it should appear" autocomplete="organization">
+          <div class="co-grid">
+            <div class="co-field full"><label>Sender name on the package *</label><input id="whiteLabelName" type="text" maxlength="120" placeholder="Your business name, as it should appear" autocomplete="organization"></div>
+            <div class="co-field full"><label>Return address *</label><input id="wlAddr1" type="text" placeholder="Street address"></div>
+            <div class="co-field full"><label>Suite / unit (optional)</label><input id="wlAddr2" type="text"></div>
+            <div class="co-field"><label>City *</label><input id="wlCity" type="text"></div>
+            <div class="co-field"><label>State *</label><input id="wlState" type="text"></div>
+            <div class="co-field"><label>ZIP *</label><input id="wlZip" type="text"></div>
+            <div class="co-field"><label>Country</label><input id="wlCountry" type="text" value="United States"></div>
+          </div>
+          <div class="help" style="margin-top:6px">This name and address print as the sender. Pochron Studios never appears on the package.</div>
         </div>
       </div>
 
@@ -1276,7 +1284,7 @@ $("stepper").querySelectorAll("button").forEach(b=>b.onclick=()=>{if(!b.disabled
 $("coEmail").addEventListener("input",()=>{state.emailConfirmed=false;$("coEmail").classList.remove("bad-field");});
 $("whiteLabel").onchange=e=>{state.whiteLabel=e.target.checked;$("whiteLabelWrap").classList.toggle("on",e.target.checked);
   $("wlNameWrap").classList.toggle("hidden",!e.target.checked);
-  if(!e.target.checked){$("whiteLabelName").value="";$("whiteLabelName").classList.remove("bad-field");}};
+  if(!e.target.checked){["whiteLabelName","wlAddr1","wlAddr2","wlCity","wlState","wlZip"].forEach(id=>{$(id).value="";$(id).classList.remove("bad-field");});}};
 
 /* ---- checkout ---- */
 function shipCost(){return (SHIP_METHODS.find(m=>m.id===state.shipMethod)||SHIP_METHODS[0]).cost;}
@@ -1304,16 +1312,21 @@ $("placeOrderBtn").onclick=()=>{
   if(emailBad)$("coEmail").classList.add("bad-field");
   const ts=tooSmallList();
   const needAck=ts.length&&!state.dpiAck;
-  // White-label parcels ship under the customer's own business name — required.
+  // White-label parcels ship under the customer's own name and return address — required.
   let wlBad=false;
-  if(state.whiteLabel&&!$("whiteLabelName").value.trim()){wlBad=true;$("whiteLabelName").classList.add("bad-field");}
-  else $("whiteLabelName").classList.remove("bad-field");
+  if(state.whiteLabel){
+    [["whiteLabelName"],["wlAddr1"],["wlCity"],["wlState"],["wlZip"]].forEach(([id])=>{
+      const ok=!!$(id).value.trim();$(id).classList.toggle("bad-field",!ok);if(!ok)wlBad=true;
+    });
+  } else {
+    ["whiteLabelName","wlAddr1","wlCity","wlState","wlZip"].forEach(id=>$(id).classList.remove("bad-field"));
+  }
   if(missing.length||emailBad||needAck||wlBad){
     const msg=[];
     if(missing.length)msg.push("Please add "+missing.join(", ")+".");
     if(emailBad)msg.push("That email address doesn't look right. Please double-check it.");
     if(needAck)msg.push("Please confirm the low-resolution image"+(ts.length>1?"s":"")+" before submitting.");
-    if(wlBad)msg.push("For white-label packaging, add the business name to show as the sender.");
+    if(wlBad)msg.push("For white-label packaging, add the sender name and return address that should appear on the parcel.");
     $("coMsg").textContent=msg.join(" ");$("coMsg").style.display="block";return;
   }
   $("coMsg").style.display="none";
@@ -1336,7 +1349,10 @@ $("placeOrderBtn").onclick=()=>{
         city:$("shipCity").value.trim(),state:$("shipState").value.trim(),zip:$("shipZip").value.trim(),
         country:($("shipCountry")&&$("shipCountry").value.trim())||"US",method:state.shipMethod},
       whiteLabel:!!state.whiteLabel,
-      ...(state.whiteLabel?{whiteLabelName:$("whiteLabelName").value.trim()}:{}),
+      ...(state.whiteLabel?{whiteLabelName:$("whiteLabelName").value.trim(),
+        whiteLabelReturn:{addr1:$("wlAddr1").value.trim(),addr2:($("wlAddr2")&&$("wlAddr2").value.trim())||undefined,
+          city:$("wlCity").value.trim(),state:$("wlState").value.trim(),zip:$("wlZip").value.trim(),
+          country:($("wlCountry")&&$("wlCountry").value.trim())||"United States"}}:{}),
       lowResAck:!!state.dpiAck,
       emailConfirmed:!!state.emailConfirmed,
       ...(pm.paymentMethodId?{paymentMethodId:pm.paymentMethodId}:{}),

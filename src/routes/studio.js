@@ -36,7 +36,8 @@ studioRouter.get('/queue', (req, res) => {
   const rows = db.prepare(
     `SELECT id, ref, status, customer_name, email, phone,
             ship_name, ship_addr1, ship_addr2, ship_city, ship_state, ship_zip, ship_country,
-            white_label, white_label_name, tax_status, total, created_at,
+            white_label, white_label_name, wl_addr1, wl_addr2, wl_city, wl_state, wl_zip, wl_country,
+            tax_status, total, created_at,
             payment_ref, payment_status, authorized_at, reauth_count
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
@@ -62,10 +63,16 @@ studioRouter.get('/queue', (req, res) => {
       taxStatus: o.tax_status || 'none',
       auth: (() => { const w = authWindow(o); return { ...w, label: authLabel(w) }; })(),
       taxNeedsReview: o.tax_status === 'failed',
-      // White-label parcels ship under the CUSTOMER's business name, with no
-      // Pochron branding — Julie sends from wherever she ships, under this name.
+      // White-label parcels ship under the CUSTOMER's own name + return address,
+      // with no Pochron branding — this is what Julie prints as the sender.
       returnAddress: o.white_label
-        ? (o.white_label_name || 'Sender')
+        ? [
+            o.white_label_name || 'Sender',
+            o.wl_addr1,
+            o.wl_addr2,
+            [o.wl_city, o.wl_state].filter(Boolean).join(', ') + (o.wl_zip ? ' ' + o.wl_zip : ''),
+            o.wl_country && !/^(us|usa|united states)$/i.test(String(o.wl_country).trim()) ? o.wl_country : null,
+          ].filter((line) => line && line.trim()).join('\n')
         : config.fulfillment.studioReturnAddress,
       items: full.items.map((i) => ({
         id: i.id, name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,

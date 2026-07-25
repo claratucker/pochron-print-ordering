@@ -73,13 +73,15 @@ describe('regressions', () => {
     const file = await app.uploadImage('wl.png', 2400, 3000);
     const order = await app.api('/api/orders', {
       method: 'POST',
-      body: app.orderBody(file.fileId, { whiteLabel: true, whiteLabelName: 'Ana Ruiz Photography' }),
+      body: app.orderBody(file.fileId, { whiteLabel: true, whiteLabelName: 'Ana Ruiz Photography',
+        whiteLabelReturn: { addr1: '9 Mill Rd', city: 'Kingston', state: 'NY', zip: '12401' } }),
     });
     const queue = await app.api('/api/studio/queue', { studio: true });
     const found = queue.json.queue.find((o) => o.ref === order.json.ref);
 
     expect(found.whiteLabelName).toBe('Ana Ruiz Photography');
     expect(found.returnAddress).toContain('Ana Ruiz Photography');
+    expect(found.returnAddress).toContain('9 Mill Rd');           // the new wl_* columns reach the read path
     expect(found.returnAddress).not.toContain('Pochron');
   });
 
@@ -90,7 +92,8 @@ describe('regressions', () => {
     const file = await app.uploadImage('ins.png', 2400, 3000);
     const res = await app.api('/api/orders', {
       method: 'POST',
-      body: app.orderBody(file.fileId, { whiteLabel: true, whiteLabelName: 'Studio X', lowResAck: true }),
+      body: app.orderBody(file.fileId, { whiteLabel: true, whiteLabelName: 'Studio X', lowResAck: true,
+        whiteLabelReturn: { addr1: '5 Test Rd', city: 'Kingston', state: 'NY', zip: '12401' } }),
     });
     expect(res.status).toBe(201);
     expect(res.json.ref).toMatch(/^PS-/);
