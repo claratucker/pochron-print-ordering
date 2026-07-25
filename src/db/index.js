@@ -127,6 +127,18 @@ CREATE TABLE IF NOT EXISTS connector_tokens (
   created_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (owner_token, provider)
 );
+
+CREATE TABLE IF NOT EXISTS email_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER,
+  order_ref TEXT,
+  type TEXT,                          -- confirmation | approved | hold | shipped | cancelled | refunded | reauthorize
+  recipient TEXT,
+  subject TEXT,
+  status TEXT,                        -- sent | failed
+  error TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
 // Lightweight forward migrations for databases created before a column existed.

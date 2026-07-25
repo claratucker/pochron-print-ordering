@@ -116,6 +116,11 @@ studioRouter.get('/queue', async (req, res) => {
         editedUrl: await editPreviewUrl(i),
       }))),
       messages: full.messages,
+      // What the system emailed this customer, and whether it went out.
+      emailLog: db.prepare(
+        `SELECT type, recipient, status, error, created_at FROM email_log
+          WHERE order_ref = ? ORDER BY created_at`
+      ).all(o.ref),
     };
   }));
   res.json({ pending, total: rows.length, queue });

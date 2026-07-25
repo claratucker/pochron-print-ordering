@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { db } from '../db/index.js';
 
 // Transactional email across the lifecycle (§11), all from info@pochronstudios.com.
 // The confirmation email is also the definitive check on the address the
@@ -43,6 +44,27 @@ function itemLines(order) {
   }).join('\n');
 }
 
+// Every send is recorded so the studio has a per-order log of what actually went
+// out — and what failed. When a customer says "I never got it", this is the answer.
+function logSend(order, type, to, subject, status, error) {
+  try {
+    db.prepare(`INSERT INTO email_log (order_id, order_ref, type, recipient, subject, status, error)
+                VALUES (?,?,?,?,?,?,?)`).run(
+      order && order.id != null ? order.id : null, order && order.ref ? order.ref : null,
+      type, to || null, subject || null, status, error || null);
+  } catch (e) { console.error('email_log write failed:', e.message); }
+}
+async function deliver(order, type, msg) {
+  try {
+    const r = await driver.send(msg);
+    logSend(order, type, msg.to, msg.subject, 'sent', null);
+    return r;
+  } catch (e) {
+    logSend(order, type, msg.to, msg.subject, 'failed', e.message);
+    throw e;   // callers already catch and log; we just record it first
+  }
+}
+
 export const emails = {
   // order received — includes a copy of the submission (§11)
   async confirmation(order) {
@@ -64,7 +86,7 @@ order for printing.
 
 Questions? ${config.email.studioContactUrl}
 Pochron Studios · info@pochronstudios.com · 718-237-1332`;
-    return driver.send({ to: order.email, subject: `Order received — ${order.ref}`, text });
+    return deliver(order, 'confirmation', { to: order.email, subject: `Order received — ${order.ref}`, text });
   },
 
   // proof on hold — studio → customer message thread (§6)
@@ -78,7 +100,7 @@ Reply to this email and we'll pick it up with your order. Nothing prints until
 we hear back and approve it.
 
 Pochron Studios · info@pochronstudios.com`;
-    return driver.send({ to: order.email, subject: `A question about your order — ${order.ref}`, text });
+    return deliver(order, 'hold', { to: order.email, subject: `A question about your order — ${order.ref}`, text });
   },
 
   // approved / charged
@@ -103,7 +125,7 @@ Pochron Studios · info@pochronstudios.com`;
       `Questions? ${config.email.studioContactUrl}`,
       'Pochron Studios · info@pochronstudios.com',
     ].join('\n');
-    return driver.send({ to: order.email, subject: `Please re-confirm your card — ${order.ref}`, text });
+    return deliver(order, 'reauthorize', { to: order.email, subject: `Please re-confirm your card — ${order.ref}`, text });
   },
 
   async approved(order, capturedAmount) {
@@ -115,7 +137,7 @@ Charged: ${money(capturedAmount)}
 We'll email tracking as soon as it ships.
 
 Pochron Studios · info@pochronstudios.com`;
-    return driver.send({ to: order.email, subject: `Approved & printing — ${order.ref}`, text });
+    return deliver(order, 'approved', { to: order.email, subject: `Approved & printing — ${order.ref}`, text });
   },
 
   // shipped
@@ -124,7 +146,7 @@ Pochron Studios · info@pochronstudios.com`;
 `Your order ${order.ref} has shipped.${tracking ? `\n\nTracking: ${tracking}` : ''}
 
 Pochron Studios · info@pochronstudios.com`;
-    return driver.send({ to: order.email, subject: `Shipped — ${order.ref}`, text });
+    return deliver(order, 'shipped', { to: order.email, subject: `Shipped — ${order.ref}`, text });
   },
 
   // cancelled — the hold was released before any charge
@@ -135,7 +157,7 @@ Pochron Studios · info@pochronstudios.com`;
 If this is unexpected, just reply to this email.
 
 Pochron Studios · info@pochronstudios.com`;
-    return driver.send({ to: order.email, subject: `Cancelled — ${order.ref}`, text });
+    return deliver(order, 'cancelled', { to: order.email, subject: `Cancelled — ${order.ref}`, text });
   },
 
   // refunded — a charge was returned
@@ -148,7 +170,7 @@ Refunded: ${money(amount)}
 It may take a few business days to appear on your statement.
 
 Pochron Studios · info@pochronstudios.com`;
-    return driver.send({ to: order.email, subject: `Refunded — ${order.ref}`, text });
+    return deliver(order, 'refunded', { to: order.email, subject: `Refunded — ${order.ref}`, text });
   },
 };
 

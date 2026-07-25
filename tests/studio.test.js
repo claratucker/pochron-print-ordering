@@ -106,6 +106,20 @@ describe('proofing workflow', () => {
     expect(res.status).toBe(200);
   });
 
+  it('records every email it sends, per order, for the studio', async () => {
+    const order = await placeOrder('emaillog.png');   // placing an order sends a confirmation
+    let queue = await app.api('/api/studio/queue', { studio: true });
+    let o = queue.json.queue.find((x) => x.ref === order.ref);
+    expect(o.emailLog.some((e) => e.type === 'confirmation' && e.status === 'sent')).toBe(true);
+    expect(o.emailLog[0].recipient).toBeTruthy();
+
+    // A studio action that emails the customer is logged too.
+    await app.api(`/api/studio/orders/${o.id}/hold`, { method: 'POST', studio: true, body: { message: 'Higher-res please' } });
+    queue = await app.api('/api/studio/queue', { studio: true });
+    o = queue.json.queue.find((x) => x.ref === order.ref);
+    expect(o.emailLog.some((e) => e.type === 'hold' && e.status === 'sent')).toBe(true);
+  });
+
   it('the studio sees the original file, not a browser-rendered copy', async () => {
     const order = await placeOrder('orig.png');
     expect(order.items[0].originalUrl).toBeTruthy();

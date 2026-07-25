@@ -98,8 +98,10 @@ their payment likely didn't go through, so the order never completed — have th
 try again. Every real order lands in the queue.
 
 **The confirmation email didn't reach the customer.**
-Check the email address on the order for a typo, and have them check their spam
-folder. There's no "resend" button; if the address was wrong, use phone.
+Each order shows an **Emails sent** list — check there first to see whether the
+confirmation actually sent or failed. If it sent, have the customer check spam and
+double-check their email on the order for a typo. If it shows failed, or the address
+was wrong, reach them by phone. (There's no "resend" button.)
 
 **An order has a tax-review flag.**
 Automatic tax couldn't be calculated for that order (it shows $0 tax). Review it

@@ -102,6 +102,10 @@
   .thread .m{font-size:12.5px;margin:3px 0}
   .thread .m .fromst{color:var(--petrol);font-weight:600}
   .thread .m .fromcu{color:var(--soft);font-weight:600}
+  .emails{padding:9px 18px;border-top:1px solid var(--line);font-size:11.5px}
+  .emails .lbl{text-transform:uppercase;letter-spacing:.05em;font-size:10px;color:var(--soft);font-weight:600;display:block;margin-bottom:3px}
+  .emails .e{color:var(--soft);margin:2px 0}
+  .emails .e.failed{color:var(--warn);font-weight:700}
   .actions{padding:14px 18px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line)}
   .parcels{display:flex;gap:30px;flex-wrap:wrap;padding:11px 18px;border-top:1px solid var(--line);background:var(--paper3)}
   .parcels .pcol{min-width:170px}
@@ -241,6 +245,11 @@ function orderCard(o){
       m.direction==='studio_to_customer'?'Studio':(m.direction==='system'?'System':'Customer')}:</span> ${esc(m.body)}</div>`).join('')
   }</div>` : '';
 
+  const emailLabel = { confirmation:'Order confirmation', approved:'Approved & printing', hold:'On-hold message', shipped:'Shipped', cancelled:'Cancelled', refunded:'Refunded', reauthorize:'Re-authorization request' };
+  const emailsSent = (o.emailLog && o.emailLog.length) ? `<div class="emails"><span class="lbl">Emails sent</span>${
+    o.emailLog.map(e => `<div class="e ${e.status==='failed'?'failed':''}">${esc(emailLabel[e.type]||e.type)} → ${esc(e.recipient||'')} · ${e.status==='failed'?('FAILED'+(e.error?' ('+esc(e.error)+')':'')):new Date(e.created_at.replace(' ','T')+'Z').toLocaleString()}</div>`).join('')
+  }</div>` : '';
+
   return `
   <div class="order ${anyLow?'flag':''}" data-id="${o.id}">
     <div class="ohead">
@@ -265,6 +274,7 @@ function orderCard(o){
     </div>
     <div class="items">${items}</div>
     ${thread}
+    ${emailsSent}
     ${canAct ? actionsBlock(o) : (o.status==='in_production'||o.status==='approved' ? shipOnlyBlock(o) : '')}
     ${refundControl(o)}
   </div>`;
