@@ -127,10 +127,10 @@ describe('proofing workflow', () => {
     expect(item.editedUrl).toBeTruthy();     // Julie is offered the edited view…
     expect(item.originalUrl).toBeTruthy();   // …alongside the original
 
-    // And the edited endpoint renders an actual image (recipe applied to the original).
-    const img = await app.api(item.editedUrl, { studio: true });
-    expect(img.status).toBe(200);
-    expect(img.headers.get('content-type')).toContain('image/');
+    // The edited URL must load WITHOUT the studio header — it's used in an <img>
+    // tag and opened in new tabs, neither of which can send the password.
+    const img = await app.api(item.editedUrl);
+    expect(img.status, JSON.stringify(img.json)).toBe(200);
   });
 
   it('a normal order ships under the Pochron return address', async () => {

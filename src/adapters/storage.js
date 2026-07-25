@@ -214,10 +214,10 @@ const s3Driver = {
     const res = await S3Client.send(new HeadObjectCommand({ Bucket: config.storage.bucket, Key: storageKey }));
     return res.ContentLength;
   },
-  async writeDerived(storageKey, buffer) {
+  async writeDerived(storageKey, buffer, contentType) {
     const { S3Client, mod } = await this._client();
     const { PutObjectCommand } = mod;
-    await S3Client.send(new PutObjectCommand({ Bucket: config.storage.bucket, Key: storageKey, Body: buffer }));
+    await S3Client.send(new PutObjectCommand({ Bucket: config.storage.bucket, Key: storageKey, Body: buffer, ...(contentType ? { ContentType: contentType } : {}) }));
     return { storageKey, bytes: buffer.length };
   },
   // A short-lived signed GET URL, re-signed on every call so it's never stale.

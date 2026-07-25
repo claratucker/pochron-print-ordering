@@ -28,11 +28,37 @@ async function renderPrintFile(item) {
   return { itemId: item.id, printUrl: storage.publicUrl(key) };
 }
 
+// A signed, browser-loadable URL of the customer's edited version (recipe applied
+// to the full-res original, downscaled for viewing). Served the same way originals
+// are — a signed URL, NOT a header-auth'd endpoint — because it loads inside an
+// <img> tag and opens in new tabs, neither of which can send the studio password.
+// Rendered once and cached to R2; the recipe + original stay the source of truth.
+async function editPreviewUrl(item) {
+  if (item.color_path !== 'self') return null;
+  const recipe = item.adjust_recipe ? JSON.parse(item.adjust_recipe) : {};
+  if (recipeIsNoop(recipe)) return null;
+  if (item.edit_preview_key) return storage.publicUrl(item.edit_preview_key);
+  const file = db.prepare('SELECT storage_key FROM files WHERE id=?').get(item.file_id);
+  if (!file) return null;
+  try {
+    const original = await storage.getBuffer(file.storage_key);
+    if (!original) return null;
+    const jpeg = await renderRecipe(original, recipe, { format: 'jpeg', maxDim: 1600 });
+    const key = `${item.file_id}/edit/item-${item.id}.jpg`;
+    await storage.writeDerived(key, jpeg, 'image/jpeg');
+    db.prepare('UPDATE order_items SET edit_preview_key=? WHERE id=?').run(key, item.id);
+    return storage.publicUrl(key);
+  } catch (e) {
+    console.error('Edit preview render failed:', e.message);
+    return null;
+  }
+}
+
 export const studioRouter = Router();
 studioRouter.use(requireStudio);   // every studio route is authenticated
 
 // GET /api/studio/queue — orders awaiting proof, plus recent history.
-studioRouter.get('/queue', (req, res) => {
+studioRouter.get('/queue', async (req, res) => {
   const rows = db.prepare(
     `SELECT id, ref, status, customer_name, email, phone,
             ship_name, ship_addr1, ship_addr2, ship_city, ship_state, ship_zip, ship_country,
@@ -42,7 +68,7 @@ studioRouter.get('/queue', (req, res) => {
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
   const pending = rows.filter((o) => o.status === 'submitted' || o.status === 'on_hold').length;
-  const queue = rows.map((o) => {
+  const queue = await Promise.all(rows.map(async (o) => {
     const full = getOrder(o.id);
     return {
       id: o.id, ref: o.ref, status: o.status, who: o.customer_name, email: o.email,
@@ -74,7 +100,7 @@ studioRouter.get('/queue', (req, res) => {
             o.wl_country && !/^(us|usa|united states)$/i.test(String(o.wl_country).trim()) ? o.wl_country : null,
           ].filter((line) => line && line.trim()).join('\n')
         : config.fulfillment.studioReturnAddress,
-      items: full.items.map((i) => ({
+      items: await Promise.all(full.items.map(async (i) => ({
         id: i.id, name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,
         colorPath: i.color_path,               // none | studio | self
         adjust: i.adjust_recipe ? JSON.parse(i.adjust_recipe) : null,
@@ -85,14 +111,13 @@ studioRouter.get('/queue', (req, res) => {
         originalUrl: i.file_id ? storage.publicUrl(
           db.prepare('SELECT storage_key FROM files WHERE id=?').get(i.file_id)?.storage_key || ''
         ) : null,
-        // The customer's edited version, rendered on demand from recipe + original,
-        // so Julie can SEE what will print — not just the raw file.
-        editedUrl: (i.color_path === 'self' && i.adjust_recipe && !recipeIsNoop(JSON.parse(i.adjust_recipe)))
-          ? `/api/studio/orders/${o.id}/items/${i.id}/edited` : null,
-      })),
+        // The customer's edited version as a signed, browser-loadable URL (rendered
+        // from recipe + original and cached), so Julie can SEE what will print.
+        editedUrl: await editPreviewUrl(i),
+      }))),
       messages: full.messages,
     };
-  });
+  }));
   res.json({ pending, total: rows.length, queue });
 });
 
@@ -277,30 +302,6 @@ studioRouter.post('/orders/:id/refund', async (req, res) => {
   transition(order.id, 'cancelled', `Refunded $${Number(amount).toFixed(2)}`);
   try { await emails.refunded(getOrder(order.id), amount); } catch (e) { console.error('Refund email failed:', e.message); }
   res.json({ ok: true, ref: order.ref, status: 'cancelled', refunded: amount });
-});
-
-// GET /api/studio/orders/:orderId/items/:itemId/edited — the customer's edited
-// version (their recipe applied to the full-res original), rendered on demand as a
-// downscaled JPEG so Julie can see exactly what will print. The recipe + original
-// remain the source of truth; this is just a viewable proof of them.
-studioRouter.get('/orders/:orderId/items/:itemId/edited', async (req, res) => {
-  const item = db.prepare('SELECT * FROM order_items WHERE id=? AND order_id=?')
-    .get(+req.params.itemId, +req.params.orderId);
-  if (!item || item.color_path !== 'self') return res.status(404).end();
-  const recipe = item.adjust_recipe ? JSON.parse(item.adjust_recipe) : {};
-  const file = db.prepare('SELECT storage_key FROM files WHERE id=?').get(item.file_id);
-  if (!file) return res.status(404).end();
-  try {
-    const original = await storage.getBuffer(file.storage_key);
-    if (!original) return res.status(404).end();
-    const jpeg = await renderRecipe(original, recipe, { format: 'jpeg', maxDim: 1600 });
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    res.send(jpeg);
-  } catch (e) {
-    console.error('Edited preview render failed:', e.message);
-    res.status(500).end();
-  }
 });
 
 // POST /api/studio/orders/:id/reauthorize — the authorization has lapsed (or is

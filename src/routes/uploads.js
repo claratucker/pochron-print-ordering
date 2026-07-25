@@ -372,7 +372,12 @@ uploadsRouter.get('/file/*', async (req, res) => {
   if (storage.name !== 'local') return res.status(404).end();
   const buffer = await storage.getBuffer(key);
   if (!buffer) return res.status(404).end();
-  res.setHeader('Content-Type', 'application/octet-stream');
+  const ext = key.split('.').pop().toLowerCase();
+  const ct = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+    : ext === 'png' ? 'image/png'
+    : (ext === 'tif' || ext === 'tiff') ? 'image/tiff'
+    : 'application/octet-stream';
+  res.setHeader('Content-Type', ct);
   res.send(buffer);
 });
 

@@ -135,6 +135,7 @@ function ensureColumn(table, column, decl) {
   if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
 }
 ensureColumn('order_items', 'print_file_key', 'TEXT');
+ensureColumn('order_items', 'edit_preview_key', 'TEXT');   // cached JPEG of the customer's edit
 ensureColumn('files', 'multipart_upload_id', 'TEXT');
 ensureColumn('files', 'source', "TEXT DEFAULT 'upload'");        // upload | dropbox | flickr | ...
 ensureColumn('files', 'source_quality', 'TEXT');                  // original | conditional | compressed
