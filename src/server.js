@@ -1,5 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { config } from './config.js';
@@ -22,6 +24,19 @@ import { adminRouter } from './routes/admin.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 1); // one nginx reverse proxy in front — needed for correct client IP (rate limiting, req.ip)
+
+// Security headers. CSP, COOP, COEP and CORP are intentionally OFF for now: the
+// order page is inline-heavy and loads Filerobot, Stripe.js and Google Fonts from
+// other origins, and the Dropbox/Google pickers use cross-origin popups — a default
+// policy would break those. This still adds HSTS (forces https), nosniff,
+// X-Frame-Options, Referrer-Policy, etc. Tighten to a tailored CSP later, in-browser.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+}));
 
 // CORS — the order app (and the mockup during dev) call this API cross-origin.
 app.use((req, res, next) => {
@@ -56,6 +71,18 @@ app.get('/api/health', async (req, res) => {
     disk: await diskStatus(DATA_DIR),
   });
 });
+
+// Basic abuse protection on the API. Uploads are exempt: a single large multipart
+// upload legitimately fires hundreds of part-signing calls, and the per-order file
+// cap already bounds them. 600 / 15 min per client is generous for real use.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.VITEST || process.env.NODE_ENV === 'test' || req.path.startsWith('/uploads/'),
+});
+app.use('/api', apiLimiter);
 
 // API routes
 app.use('/api/catalog', catalogRouter);
