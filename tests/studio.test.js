@@ -22,7 +22,7 @@ describe('access control', () => {
   });
 
   it('approve and hold are also protected', async () => {
-    for (const action of ['approve', 'hold', 'ship']) {
+    for (const action of ['approve', 'hold', 'ship', 'cancel', 'refund']) {
       const res = await app.api(`/api/studio/orders/1/${action}`, { method: 'POST', body: {} });
       expect(res.status, action).toBe(401);
     }
@@ -55,6 +55,43 @@ describe('proofing workflow', () => {
     const queue = await app.api('/api/studio/queue', { studio: true });
     const held = queue.json.queue.find((o) => o.id === order.id);
     expect(held.messages.some((m) => m.body.includes('higher-resolution'))).toBe(true);
+  });
+
+  it('cancel voids the hold on an un-charged order', async () => {
+    const order = await placeOrder('cancel.png');
+    const res = await app.api(`/api/studio/orders/${order.id}/cancel`, { method: 'POST', studio: true, body: {} });
+    expect(res.status).toBe(200);
+    expect(res.json.status).toBe('cancelled');
+    const q = await app.api('/api/studio/queue', { studio: true });
+    const o = q.json.queue.find((x) => x.id === order.id);
+    expect(o.status).toBe('cancelled');
+    expect(o.paymentStatus).toBe('voided');
+  });
+
+  it('a charged order cannot be cancelled — it must be refunded', async () => {
+    const order = await placeOrder('nocancel.png');
+    await app.api(`/api/studio/orders/${order.id}/approve`, { method: 'POST', studio: true, body: {} });
+    const res = await app.api(`/api/studio/orders/${order.id}/cancel`, { method: 'POST', studio: true, body: {} });
+    expect(res.status).toBe(409);
+    expect(res.json.code).toBe('ALREADY_CAPTURED');
+  });
+
+  it('refund returns the charge on an approved order', async () => {
+    const order = await placeOrder('refund.png');
+    await app.api(`/api/studio/orders/${order.id}/approve`, { method: 'POST', studio: true, body: {} });
+    const res = await app.api(`/api/studio/orders/${order.id}/refund`, { method: 'POST', studio: true, body: {} });
+    expect(res.status).toBe(200);
+    expect(res.json.refunded).toBe(order.total);
+    const q = await app.api('/api/studio/queue', { studio: true });
+    const o = q.json.queue.find((x) => x.id === order.id);
+    expect(o.paymentStatus).toBe('refunded');
+  });
+
+  it('an un-charged order cannot be refunded — it must be cancelled', async () => {
+    const order = await placeOrder('norefund.png');
+    const res = await app.api(`/api/studio/orders/${order.id}/refund`, { method: 'POST', studio: true, body: {} });
+    expect(res.status).toBe(409);
+    expect(res.json.code).toBe('NOT_CAPTURED');
   });
 
   it('shipping records tracking and completes the order', async () => {

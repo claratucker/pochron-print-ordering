@@ -247,6 +247,19 @@ function orderCard(o){
     <div class="items">${items}</div>
     ${thread}
     ${canAct ? actionsBlock(o) : (o.status==='in_production'||o.status==='approved' ? shipOnlyBlock(o) : '')}
+    ${refundControl(o)}
+  </div>`;
+}
+
+// A charged order can be refunded regardless of its shipping status. Shown
+// separately from the approve/ship blocks so it appears for approved, in-production
+// and shipped orders alike.
+function refundControl(o){
+  if(!['captured','partially_captured'].includes(o.paymentStatus)) return '';
+  return `
+  <div class="actions">
+    <button class="ghost refund">Refund order</button>
+    <span class="note">Refunds the charge for ${esc(o.ref)} through Stripe and emails the customer.</span>
   </div>`;
 }
 
@@ -286,6 +299,9 @@ function actionsBlock(o){
       <div class="holdrow"><button class="ghost hold">Hold &amp; message</button></div>
     </div>
     <div class="note">Approving captures payment for the selected photos. Unchecked photos stay on hold for a partial capture.</div>
+    ${o.paymentStatus === 'authorized' ? `
+    <div class="cancelbox"><button class="ghost cancel">Cancel order &amp; release hold</button>
+      <span class="note">Releases the card hold now instead of waiting for it to expire. Nothing is charged.</span></div>` : ''}
     ${o.auth && (o.auth.status === 'expired' || o.auth.status === 'expiring') ? `
     <div class="authbox">
       <b>${o.auth.status === 'expired' ? 'The card hold has expired.' : 'The card hold is about to expire.'}</b>
@@ -375,6 +391,28 @@ function wireOrder(o){
       toast(`${o.ref} marked shipped.`);
       load();
     } catch(e){ shipBtn.disabled=false; toast(e.message); }
+  };
+
+  const cancelBtn = el.querySelector('.cancel');
+  if (cancelBtn) cancelBtn.onclick = async () => {
+    if(!confirm(`Cancel ${o.ref} and release the card hold? The customer will be emailed. This can't be undone.`)) return;
+    cancelBtn.disabled = true;
+    try {
+      await api(`/api/studio/orders/${o.id}/cancel`, { method:'POST', body:'{}' });
+      toast(`${o.ref} cancelled — hold released, customer emailed.`);
+      load();
+    } catch(e){ cancelBtn.disabled=false; toast(e.message); }
+  };
+
+  const refundBtn = el.querySelector('.refund');
+  if (refundBtn) refundBtn.onclick = async () => {
+    if(!confirm(`Refund ${o.ref} to the customer? This can't be undone.`)) return;
+    refundBtn.disabled = true;
+    try {
+      const r = await api(`/api/studio/orders/${o.id}/refund`, { method:'POST', body:'{}' });
+      toast(`${o.ref} refunded ${money(r.refunded)} — customer emailed.`);
+      load();
+    } catch(e){ refundBtn.disabled=false; toast(e.message); }
   };
 }
 

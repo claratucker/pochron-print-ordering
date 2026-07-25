@@ -44,6 +44,7 @@ studioRouter.get('/queue', (req, res) => {
     return {
       id: o.id, ref: o.ref, status: o.status, who: o.customer_name, email: o.email,
       whiteLabel: !!o.white_label, total: o.total, createdAt: o.created_at,
+      paymentStatus: o.payment_status || null,
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
       taxStatus: o.tax_status || 'none',
@@ -209,6 +210,50 @@ studioRouter.post('/orders/:id/ship', async (req, res) => {
   transition(order.id, 'shipped', tracking ? `Shipped: ${tracking}` : 'Shipped');
   try { await emails.shipped(getOrder(order.id), tracking); } catch (e) { console.error('Shipped email failed:', e.message); }
   res.json({ ref: order.ref, status: 'shipped', tracking: tracking || null });
+});
+
+// POST /api/studio/orders/:id/cancel — release the hold on an order that hasn't
+// been charged yet (instead of waiting ~7 days for it to lapse). Notifies the
+// customer. Refuse if it's already been charged — that path is /refund.
+studioRouter.post('/orders/:id/cancel', async (req, res) => {
+  const order = getOrder(+req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  if (['captured', 'partially_captured'].includes(order.payment_status)) {
+    return res.status(409).json({ error: 'This order has already been charged — use Refund instead.', code: 'ALREADY_CAPTURED' });
+  }
+  if (['voided', 'refunded'].includes(order.payment_status) || order.status === 'cancelled') {
+    return res.status(409).json({ error: 'This order is already cancelled.', code: 'ALREADY_CANCELLED' });
+  }
+  // Best-effort: the hold may already have lapsed, which is fine — still cancel.
+  if (order.payment_ref) {
+    try { await payment.void({ paymentRef: order.payment_ref }); }
+    catch (e) { console.warn('Cancel: void failed (hold may have lapsed):', e.message); }
+  }
+  db.prepare(`UPDATE orders SET payment_status='voided' WHERE id=?`).run(order.id);
+  transition(order.id, 'cancelled', 'Order cancelled; card hold released');
+  try { await emails.cancelled(getOrder(order.id)); } catch (e) { console.error('Cancelled email failed:', e.message); }
+  res.json({ ok: true, ref: order.ref, status: 'cancelled' });
+});
+
+// POST /api/studio/orders/:id/refund — refund a charged order in full via the
+// payment processor. Refuse if nothing was charged (use /cancel) or already refunded.
+studioRouter.post('/orders/:id/refund', async (req, res) => {
+  const order = getOrder(+req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  if (!['captured', 'partially_captured'].includes(order.payment_status)) {
+    return res.status(409).json({ error: 'This order has not been charged, so there is nothing to refund. Use Cancel to release the hold.', code: 'NOT_CAPTURED' });
+  }
+  if (order.payment_status === 'refunded') {
+    return res.status(409).json({ error: 'This order has already been refunded.', code: 'ALREADY_REFUNDED' });
+  }
+  let refund;
+  try { refund = await payment.refund({ paymentRef: order.payment_ref }); }
+  catch (e) { return res.status(402).json({ error: 'Refund failed at the payment processor.', detail: e.message, code: 'REFUND_FAILED' }); }
+  db.prepare(`UPDATE orders SET payment_status='refunded' WHERE id=?`).run(order.id);
+  const amount = refund.amount ?? order.total;
+  transition(order.id, 'cancelled', `Refunded $${Number(amount).toFixed(2)}`);
+  try { await emails.refunded(getOrder(order.id), amount); } catch (e) { console.error('Refund email failed:', e.message); }
+  res.json({ ok: true, ref: order.ref, status: 'cancelled', refunded: amount });
 });
 
 // POST /api/studio/orders/:id/reauthorize — the authorization has lapsed (or is

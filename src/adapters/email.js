@@ -126,6 +126,30 @@ Pochron Studios · info@pochronstudios.com`;
 Pochron Studios · info@pochronstudios.com`;
     return driver.send({ to: order.email, subject: `Shipped — ${order.ref}`, text });
   },
+
+  // cancelled — the hold was released before any charge
+  async cancelled(order) {
+    const text =
+`Your order ${order.ref} has been cancelled and the card hold released. You were not charged.
+
+If this is unexpected, just reply to this email.
+
+Pochron Studios · info@pochronstudios.com`;
+    return driver.send({ to: order.email, subject: `Cancelled — ${order.ref}`, text });
+  },
+
+  // refunded — a charge was returned
+  async refunded(order, amount) {
+    const text =
+`Your order ${order.ref} has been refunded.
+
+Refunded: ${money(amount)}
+
+It may take a few business days to appear on your statement.
+
+Pochron Studios · info@pochronstudios.com`;
+    return driver.send({ to: order.email, subject: `Refunded — ${order.ref}`, text });
+  },
 };
 
 export const email = driver;
