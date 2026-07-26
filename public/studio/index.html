@@ -48,6 +48,8 @@
   .seg button{border:0;border-radius:0;background:var(--paper);color:var(--soft);padding:7px 14px;
     letter-spacing:.04em;font-size:12.5px}
   .seg button.on{background:var(--paper3);color:var(--petrol);font-weight:600}
+  .search{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--paper);border-radius:4px;padding:7px 11px;color:var(--ink);min-width:210px}
+  .search::placeholder{color:var(--soft)}
   .grow{flex:1}
 
   /* order card */
@@ -153,8 +155,11 @@
       <div class="grow"></div>
       <div class="seg" id="filter">
         <button data-f="pending" class="on">Needs review</button>
+        <button data-f="progress">In progress</button>
+        <button data-f="done">Done</button>
         <button data-f="all">All</button>
       </div>
+      <input id="search" class="search" type="search" placeholder="Search ref, name, or email…">
     </div>
     <div id="list"><div class="loading">Loading queue…</div></div>
   </main>
@@ -214,6 +219,7 @@ $('#filter').addEventListener('click', e => {
   [...$('#filter').children].forEach(x => x.classList.toggle('on', x===b));
   render();
 });
+$('#search').addEventListener('input', render);
 
 async function load(){
   try { DATA = await api('/api/studio/queue'); render(); }
@@ -221,13 +227,33 @@ async function load(){
 }
 
 /* ---------- render ---------- */
-const NEEDS = new Set(['submitted','on_hold']);
+// Status groups so the working queue (Needs review) stays short no matter how many
+// total orders exist. Search spans ALL orders so a specific one is always findable.
+const GROUPS = {
+  pending:  new Set(['submitted','on_hold']),
+  progress: new Set(['approved','in_production']),
+  done:     new Set(['shipped','complete','cancelled']),
+};
+const NEEDS = GROUPS.pending;
 function render(){
   $('#pendingN').textContent = DATA.pending;
   $('#totalN').textContent = DATA.total;
-  const rows = DATA.queue.filter(o => FILTER==='all' ? true : NEEDS.has(o.status));
+  const q = ($('#search') ? $('#search').value : '').trim().toLowerCase();
+  let rows;
+  if (q) {
+    rows = DATA.queue.filter(o =>
+      (o.ref||'').toLowerCase().includes(q) ||
+      (o.who||'').toLowerCase().includes(q) ||
+      (o.email||'').toLowerCase().includes(q));
+  } else {
+    rows = DATA.queue.filter(o => FILTER==='all' ? true : GROUPS[FILTER].has(o.status));
+  }
   const list = $('#list');
-  if (!rows.length){ list.innerHTML = `<div class="empty">${FILTER==='pending'?'Nothing awaiting review. 🎞️':'No orders yet.'}</div>`; return; }
+  if (!rows.length){
+    const msg = q ? `No orders match “${esc(q)}”.`
+      : (FILTER==='pending' ? 'Nothing awaiting review. 🎞️' : 'No orders here.');
+    list.innerHTML = `<div class="empty">${msg}</div>`; return;
+  }
   list.innerHTML = rows.map(orderCard).join('');
   rows.forEach(wireOrder);
 }

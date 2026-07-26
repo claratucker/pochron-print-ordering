@@ -2,12 +2,26 @@
 // unreachable orders, and the promises made to the customer.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startApp, stopApp } from './helpers/app.js';
+import { cardErrorMessage } from '../src/routes/orders.js';
 
 let app;
 beforeAll(async () => { app = await startApp(); });
 afterAll(() => stopApp());
 
 describe('order submission', () => {
+  it('maps card declines to specific, customer-safe messages', () => {
+    expect(cardErrorMessage({ type: 'StripeCardError', decline_code: 'insufficient_funds' })).toMatch(/insufficient funds/i);
+    expect(cardErrorMessage({ type: 'StripeCardError', decline_code: 'expired_card' })).toMatch(/expired/i);
+    expect(cardErrorMessage({ type: 'StripeCardError', code: 'incorrect_cvc' })).toMatch(/cvc/i);
+    // Falls back to Stripe's own message, then to a generic line.
+    expect(cardErrorMessage({ type: 'StripeCardError', message: 'A specific bank reason.' })).toBe('A specific bank reason.');
+    expect(cardErrorMessage({ message: 'network blip' })).toMatch(/could not be authorized/i);
+    // Distinct codes give distinct messages (the bug: they were all identical).
+    const a = cardErrorMessage({ type: 'StripeCardError', decline_code: 'insufficient_funds' });
+    const b = cardErrorMessage({ type: 'StripeCardError', decline_code: 'expired_card' });
+    expect(a).not.toBe(b);
+  });
+
   it('creates an order with a PS- reference', async () => {
     const f = await app.uploadImage('a.png', 3000, 2400);
     const res = await app.api('/api/orders', { method: 'POST', body: app.orderBody(f.fileId) });

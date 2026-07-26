@@ -86,7 +86,8 @@ if (storeDriver !== 's3') {
   }
   for (const k of ['S3_BUCKET', 'S3_ENDPOINT', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']) {
     if (!has(k)) fail(`${k} is unset or a placeholder`);
-    else ok(`${k} set${k.endsWith('KEY') ? ` (${mask(env[k])})` : `: ${k === 'S3_SECRET_ACCESS_KEY' ? mask(env[k]) : env[k]}`}`);
+    // Mask the credential pair (access key id + secret) so pasted preflight output can't leak it.
+    else ok(`${k} set${k.includes('ACCESS_KEY') ? ` (${mask(env[k])})` : `: ${env[k]}`}`);
   }
   const ep = env.S3_ENDPOINT || '';
   if (has('S3_ENDPOINT') && !/^https:\/\/[a-z0-9]+\.r2\.cloudflarestorage\.com\/?$/i.test(ep))

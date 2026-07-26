@@ -15,6 +15,29 @@ export const ordersRouter = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Turn a Stripe decline into a specific, customer-safe message. Card errors carry a
+// decline_code (why the bank said no) and an already-friendly .message; anything
+// else falls back to a generic line. Exported for testing.
+export function cardErrorMessage(e) {
+  const code = e.decline_code || e.code;
+  const map = {
+    insufficient_funds: 'Your card has insufficient funds. Please use a different card.',
+    expired_card: 'Your card has expired. Please use a different card.',
+    incorrect_cvc: "Your card's security code (CVC) doesn't match. Please re-enter it.",
+    invalid_cvc: "Your card's security code (CVC) is invalid. Please re-enter it.",
+    incorrect_number: 'Your card number is incorrect. Please check it and try again.',
+    invalid_number: 'Your card number is invalid. Please check it and try again.',
+    invalid_expiry_month: "Your card's expiration month is invalid.",
+    invalid_expiry_year: "Your card's expiration year is invalid.",
+    card_declined: 'Your card was declined. Please use a different card or contact your bank.',
+    generic_decline: 'Your card was declined. Please use a different card or contact your bank.',
+    processing_error: 'There was a problem processing your card. Please try again in a moment.',
+  };
+  if (code && map[code]) return map[code];
+  if (e.type === 'StripeCardError' && e.message) return e.message;  // Stripe's message is customer-safe
+  return 'Your card could not be authorized. Please try a different card.';
+}
+
 // Normalized self-edit recipe (from the browser editor, mapped in the client).
 // passthrough() keeps any extra editor fields without failing validation; the
 // server render only reads the known keys.
@@ -189,7 +212,7 @@ ordersRouter.post('/', async (req, res) => {
   try {
     auth = await payment.authorize({ amount: quote.total, email: contact.email, orderRef: ref, paymentMethodId });
   } catch (e) {
-    return res.status(402).json({ error: 'Your card could not be authorized.', detail: e.message });
+    return res.status(402).json({ error: cardErrorMessage(e), detail: e.message, code: e.decline_code || e.code || null });
   }
 
   // Only 'authorized' (funds held) or a pending 3D Secure challenge may proceed.
