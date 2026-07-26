@@ -614,10 +614,22 @@ function mapDesignStateToRecipe(ds={},dims=null){
   const r={},adj=ds.adjustments||ds||{};
   const crop=adj.crop||ds.crop;
   if(crop&&crop.width&&crop.height){
-    const ratio=crop.width<=1&&crop.height<=1,W=dims&&dims.width,H=dims&&dims.height;
-    r.crop=(ratio&&W&&H)
-      ?{left:Math.round((crop.x||0)*W),top:Math.round((crop.y||0)*H),width:Math.round(crop.width*W),height:Math.round(crop.height*H)}
-      :{left:Math.round(crop.x||0),top:Math.round(crop.y||0),width:Math.round(crop.width),height:Math.round(crop.height)};
+    const W=dims&&dims.width,H=dims&&dims.height;
+    const norm=crop.width<=1&&crop.height<=1;   // Filerobot gave 0..1 fractions
+    if(norm&&W&&H){
+      r.crop={left:Math.round((crop.x||0)*W),top:Math.round((crop.y||0)*H),
+              width:Math.round(crop.width*W),height:Math.round(crop.height*H)};
+    }else{
+      // Absolute px — but in the (often downscaled) space Filerobot works in for
+      // canvas performance, NOT the full-res original. Scale up to the original
+      // using the editor's shown dimensions, or the crop lands in a tiny corner.
+      const shown=ds.shownImageDimensions||{};
+      const sw=shown.width||0,sh=shown.height||0;
+      const sx=(sw&&W)?W/sw:(shown.scaledBy?1/shown.scaledBy:1);
+      const sy=(sh&&H)?H/sh:(shown.scaledBy?1/shown.scaledBy:1);
+      r.crop={left:Math.round((crop.x||0)*sx),top:Math.round((crop.y||0)*sy),
+              width:Math.round(crop.width*sx),height:Math.round(crop.height*sy)};
+    }
   }
   if(adj.rotation)r.rotate=((adj.rotation%360)+360)%360;
   if(adj.isFlippedX)r.flipX=true; if(adj.isFlippedY)r.flipY=true;
