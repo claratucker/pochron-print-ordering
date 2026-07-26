@@ -145,6 +145,7 @@
     </div>
     <div style="display:flex;gap:10px;align-items:center">
       <button class="subtle" id="refresh">Refresh</button>
+      <button class="subtle" id="exportCsv">Download CSV</button>
       <button class="ghost" id="signout">Sign out</button>
     </div>
   </header>
@@ -213,6 +214,18 @@ function signOut(msg){
 }
 $('#signout').onclick = () => signOut();
 $('#refresh').onclick = load;
+$('#exportCsv').onclick = async () => {
+  try {
+    const res = await fetch(API + '/api/studio/orders.csv', { headers: { 'X-Studio-Password': PW } });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `pochron-orders-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) { toast(e.message); }
+};
 $('#filter').addEventListener('click', e => {
   const b = e.target.closest('button'); if(!b) return;
   FILTER = b.dataset.f;

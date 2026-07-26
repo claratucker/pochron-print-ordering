@@ -1,6 +1,6 @@
 {
   "name": "pochron-print-ordering-backend",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Phase 1 backend for Pochron Studios online print ordering. Serves the photo-upload mockup: server-authoritative pricing, direct-to-cloud uploads, order + proofing lifecycle, Stripe auth/capture seams, transactional email, admin pricing page.",
   "type": "module",
   "main": "src/server.js",
@@ -16,7 +16,8 @@
     "test:all": "vitest run && npm run smoke",
     "backup": "node scripts/backup.js",
     "check:storage": "node scripts/check-storage.js",
-    "preflight": "node scripts/preflight.js"
+    "preflight": "node scripts/preflight.js",
+    "reset-test-data": "node scripts/reset-test-data.js"
   },
   "engines": {
     "node": ">=20"

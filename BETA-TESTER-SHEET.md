@@ -13,7 +13,7 @@ start.
 
 ## Placing a test order
 
-1. Go to **https://order.pochronstudios.com/order/mockupV5.html**
+1. Go to **https://order.pochronstudios.com/order/**
 2. Upload one or more photos, choose paper and size, and (optionally) edit/crop.
 3. At checkout, enter shipping details and pay with the **test card**:
 

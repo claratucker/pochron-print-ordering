@@ -6,3 +6,6 @@ data/
 _*.mjs
 
 backups/
+
+# Confidential handout — holds studio/admin passwords, never publish
+STUDIO-GUIDE.md

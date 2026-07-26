@@ -106,6 +106,20 @@ describe('proofing workflow', () => {
     expect(res.status).toBe(200);
   });
 
+  it('exports orders as CSV for the studio records', async () => {
+    const order = await placeOrder('csvexport.png');
+    // Requires the studio password.
+    const noauth = await fetch(app.base + '/api/studio/orders.csv');
+    expect(noauth.status).toBe(401);
+    // With it, returns a CSV containing the order.
+    const res = await fetch(app.base + '/api/studio/orders.csv', { headers: { 'X-Studio-Password': 'test-studio-pw' } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/csv');
+    const csv = await res.text();
+    expect(csv).toContain('Ref');          // header row
+    expect(csv).toContain(order.ref);      // the order itself
+  });
+
   it('records every email it sends, per order, for the studio', async () => {
     const order = await placeOrder('emaillog.png');   // placing an order sends a confirmation
     let queue = await app.api('/api/studio/queue', { studio: true });

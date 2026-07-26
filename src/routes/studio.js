@@ -126,6 +126,33 @@ studioRouter.get('/queue', async (req, res) => {
   res.json({ pending, total: rows.length, queue });
 });
 
+// GET /api/studio/orders.csv — a spreadsheet of all orders for Julie's records
+// (accounting, taxes). Fetched with the studio header from the client, which then
+// triggers the download, so it never needs a header-less navigation.
+studioRouter.get('/orders.csv', (req, res) => {
+  const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
+  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const header = ['Ref', 'Date', 'Status', 'Payment', 'Customer', 'Email', 'Phone', 'Ship to',
+    'White label', 'White-label name', 'Items', 'Subtotal', 'Shipping', 'Tax', 'Total'];
+  const lines = [header.map(q).join(',')];
+  for (const o of orders) {
+    const items = db.prepare('SELECT paper, size, qty FROM order_items WHERE order_id = ?').all(o.id)
+      .map((i) => `${i.paper} ${i.size} x${i.qty}`).join('; ');
+    const shipTo = [
+      o.ship_name || o.customer_name, o.ship_addr1, o.ship_addr2,
+      [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_zip ? ' ' + o.ship_zip : ''),
+      o.ship_country && !/^(us|usa|united states)$/i.test(String(o.ship_country).trim()) ? o.ship_country : null,
+    ].filter((l) => l && String(l).trim()).join(', ');
+    lines.push([o.ref, o.created_at, o.status, o.payment_status, o.customer_name, o.email, o.phone,
+      shipTo, o.white_label ? 'Yes' : 'No', o.white_label_name, items,
+      o.subtotal, o.shipping_cost, o.tax, o.total].map(q).join(','));
+  }
+  const csv = '\uFEFF' + lines.join('\r\n');   // BOM so Excel opens it as UTF-8
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="pochron-orders-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
+});
+
 // GET /api/studio/orders/:id — full order detail.
 studioRouter.get('/orders/:id', (req, res) => {
   const order = getOrder(+req.params.id);

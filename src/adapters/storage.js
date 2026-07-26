@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import crypto from 'node:crypto';
 import {
-  mkdirSync, writeFileSync, statSync, existsSync, readFileSync,
+  mkdirSync, writeFileSync, statSync, existsSync, readFileSync, unlinkSync,
   readdirSync, rmSync, openSync, readSync, closeSync, createWriteStream,
 } from 'node:fs';
 import { config } from '../config.js';
@@ -90,6 +90,10 @@ const localDriver = {
   async getBuffer(storageKey) {
     const path = join(UPLOAD_DIR, storageKey);
     return existsSync(path) ? readFileSync(path) : null;
+  },
+  async remove(storageKey) {
+    try { unlinkSync(join(UPLOAD_DIR, storageKey)); } catch { /* already gone */ }
+    return { storageKey, removed: true };
   },
   // Ranged read for header-only metadata on huge files (no full load).
   async getRange(storageKey, start, end) {
@@ -219,6 +223,12 @@ const s3Driver = {
     const { PutObjectCommand } = mod;
     await S3Client.send(new PutObjectCommand({ Bucket: config.storage.bucket, Key: storageKey, Body: buffer, ...(contentType ? { ContentType: contentType } : {}) }));
     return { storageKey, bytes: buffer.length };
+  },
+  async remove(storageKey) {
+    const { S3Client, mod } = await this._client();
+    const { DeleteObjectCommand } = mod;
+    await S3Client.send(new DeleteObjectCommand({ Bucket: config.storage.bucket, Key: storageKey }));
+    return { storageKey, removed: true };
   },
   // A short-lived signed GET URL, re-signed on every call so it's never stale.
   // Used by the /api/uploads/file route to redirect the browser straight to R2
