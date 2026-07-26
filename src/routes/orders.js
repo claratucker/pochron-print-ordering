@@ -382,7 +382,7 @@ function publicView(o) {
     ref: o.ref, status: o.status, total: o.total,
     items: o.items.map((i) => ({
       name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,
-      colorPath: i.color_path, lineTotal: i.line_total, status: i.item_status,
+      border: i.border, colorPath: i.color_path, lineTotal: i.line_total, status: i.item_status,
     })),
     tracking: o.tracking, createdAt: o.created_at,
     messages: o.messages.filter((m) => m.direction !== 'system').map((m) => ({ from: m.direction, body: m.body, at: m.created_at })),

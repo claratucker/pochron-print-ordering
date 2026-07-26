@@ -351,7 +351,7 @@ function itemRow(o,i,canAct){
     ${thumbs}
     <div>
       <div class="iname">${esc(i.name || 'photo')}</div>
-      <div class="ispec">${esc(i.paper)} · ${esc(i.size)} · ×${i.qty}${i.px?(' · '+esc(i.px)+' px'):''}</div>
+      <div class="ispec">${esc(i.paper)} · ${esc(i.size)} · ${i.border==='border'?'white border':'no border'} · ×${i.qty}${i.px?(' · '+esc(i.px)+' px'):''}</div>
       <div class="tags">${path}${dpi}</div>
       ${recipe}${orig}
     </div>

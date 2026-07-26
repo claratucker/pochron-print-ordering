@@ -102,7 +102,7 @@ studioRouter.get('/queue', async (req, res) => {
         : config.fulfillment.studioReturnAddress,
       items: await Promise.all(full.items.map(async (i) => ({
         id: i.id, name: i.original_name, paper: i.paper, size: i.size, qty: i.qty,
-        colorPath: i.color_path,               // none | studio | self
+        border: i.border, colorPath: i.color_path,               // none | studio | self
         adjust: i.adjust_recipe ? JSON.parse(i.adjust_recipe) : null,
         px: i.width && i.height ? `${i.width}×${i.height}` : null,
         dpi: i.dpi, dpiFlag: i.dpi_flag, lineTotal: i.line_total,
