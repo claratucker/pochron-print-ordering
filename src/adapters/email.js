@@ -40,7 +40,7 @@ const driver = config.email.driver === 'smtp' ? smtpDriver : consoleDriver;
 function itemLines(order) {
   return order.items.map((i) => {
     const cc = i.color_path === 'studio' ? ' · hand color correction' : '';
-    return `  • ${i.original_name} — ${i.paper} · ${i.size} in × ${i.qty}${cc} — ${money(i.line_total)}`;
+    return `  • ${i.original_name} — ${i.paper} · ${i.size} in · ${i.border==='border'?'white border':'no border'} × ${i.qty}${cc} — ${money(i.line_total)}`;
   }).join('\n');
 }
 
