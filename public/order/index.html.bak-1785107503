@@ -1265,7 +1265,7 @@ function renderCrops(){
   $("cropList").querySelectorAll('.presentation select').forEach(el=>el.onchange=()=>{
     const p=state.photos.find(x=>x.id==el.dataset.id);p[el.dataset.f]=el.value;
     renderCrops();updateTotals();});
-  $("cropList").querySelectorAll(".cropframe:not(.bordered) img").forEach(img=>makeDraggable(img,state.photos.find(x=>x.id==img.dataset.id)));
+  $("cropList").querySelectorAll(".cropframe img").forEach(img=>makeDraggable(img,state.photos.find(x=>x.id==img.dataset.id)));
   refreshDpiGates();
   updateTotals();
 }
