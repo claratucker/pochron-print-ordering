@@ -125,7 +125,8 @@
   .toast.show{opacity:1}
   .empty{text-align:center;color:var(--soft);padding:60px 20px;font-size:13px}
   .loading{text-align:center;color:var(--soft);padding:60px 20px}
-  .pframe{width:80px;background:#fff;box-sizing:border-box;overflow:hidden;border:1px solid var(--line);border-radius:3px;display:block}
+  .pframe{width:96px;background:#fff;box-sizing:border-box;overflow:hidden;border:1px solid var(--line);border-radius:3px;display:block}
+  .pframe.ph{aspect-ratio:1;display:flex;align-items:center;justify-content:center;color:var(--soft);font-size:10px;text-align:center}
   .pframe img{width:100%;height:100%;object-fit:contain;object-position:50% 50%;display:block}
 </style>
 </head>
@@ -347,6 +348,24 @@ function printTile(i){
   return `<figure class="tw"><div class="pframe" style="aspect-ratio:${pw}/${ph};padding:${pad}%"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></div><figcaption>Final print</figcaption></figure>`;
 }
 
+function orderPreview(i){
+  // One preview of the finished print: the customer's edit if they self-edited, else the
+  // original, shaped to the ordered size with the border they chose. Raw files are reached
+  // through the download links below, so we don't thumbnail them separately.
+  const src=i.editedUrl||i.originalUrl;
+  if(!src) return `<figure class="tw"><div class="pframe ph">no file</div><figcaption>As ordered</figcaption></figure>`;
+  const sz=String(i.size||'').match(/(\d+)\D+(\d+)/);
+  const a=sz?+sz[1]:1, b=sz?+sz[2]:1, long=Math.max(a,b), short=Math.min(a,b);
+  const px=String(i.px||'').match(/(\d+)\D+(\d+)/);
+  const pw = px ? ((+px[1]>+px[2])?long:short) : a;
+  const ph = px ? ((+px[1]>+px[2])?short:long) : b;
+  const bordered = i.border==='border';
+  const pad = bordered ? Math.max(0.25/pw*100,1).toFixed(2) : 0;
+  const fit = bordered ? 'contain' : 'cover';
+  const opos = bordered ? '50% 50%' : `${i.posX!=null?i.posX:50}% ${i.posY!=null?i.posY:50}%`;
+  return `<figure class="tw"><div class="pframe" style="aspect-ratio:${pw}/${ph};padding:${pad}%"><img src="${esc(src)}" alt="" loading="lazy" style="object-fit:${fit};object-position:${opos}" onerror="this.style.visibility='hidden'"></div><figcaption>As ordered</figcaption></figure>`;
+}
+
 function itemRow(o,i,canAct){
   const path = i.colorPath==='studio' ? '<span class="tag studio">Studio color-correct</span>'
              : i.colorPath==='self'   ? '<span class="tag self">Customer self-edit</span>'
@@ -355,10 +374,7 @@ function itemRow(o,i,canAct){
   const recipe = (i.colorPath==='self' && i.adjust)
     ? `<div class="recipe">recipe: ${esc(Object.entries(i.adjust).filter(([,v])=>v).map(([k,v])=>k+' '+v).join('  ') || 'crop/framing only')}</div>` : '';
   const thumbImg=(url,label)=>`<figure class="tw"><img class="thumb" src="${esc(url)}" alt="" loading="lazy" onerror="this.classList.add('ph');this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb ph',textContent:'no preview'}))">${label?`<figcaption>${label}</figcaption>`:''}</figure>`;
-  const files = i.editedUrl
-    ? `${thumbImg(i.editedUrl,"Customer's edit")}${i.originalUrl?thumbImg(i.originalUrl,'Original'):''}`
-    : (i.originalUrl ? thumbImg(i.originalUrl,'') : `<div class="thumb ph">no file</div>`);
-  const thumbs = `<div class="thumbs">${files}${printTile(i)}</div>`;
+  const thumbs = `<div class="thumbs">${orderPreview(i)}</div>`;
   const orig = i.editedUrl
     ? `<div class="orig"><a href="${esc(i.editedUrl)}" target="_blank" rel="noopener">open edit</a> · <a href="${esc(i.originalUrl)}" target="_blank" rel="noopener">open original</a> · prints the customer's edit</div>`
     : (i.originalUrl ? `<div class="orig"><a href="${esc(i.originalUrl)}" target="_blank" rel="noopener">open original</a> · prints from original</div>` : '');
