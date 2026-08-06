@@ -95,11 +95,15 @@
   .warnbadge{font-family:var(--mono); font-size:10px; color:var(--bad)}
 
   .stage{background:var(--surround); background-image:var(--surround-grad); border:1px solid var(--line); border-radius:3px; min-height:340px; display:flex; align-items:center; justify-content:center; padding:30px; position:relative; overflow:hidden; position:sticky; top:96px}
-  .frame{background:transparent; padding:0; box-shadow:0 22px 40px -18px rgba(33,28,23,.55),0 4px 10px -6px rgba(33,28,23,.4); transition:width .4s,height .4s}
+  .frame{background:transparent; padding:0; box-shadow:0 22px 40px -18px rgba(33,28,23,.55),0 4px 10px -6px rgba(33,28,23,.4)}
   .frame .window{width:100%; height:100%; overflow:hidden; background:#C8C8C8; position:relative}
   .frame img{width:100%; height:100%; object-fit:cover; display:block}
   /* Sits on the dark stage, so it needs a light value like the preview caption. */
   .scalehint{position:absolute; bottom:10px; right:14px; font-family:var(--mono); font-size:10px; color:var(--plum)}
+  .rulerwrap{position:relative}
+  .rulerwrap .frame{position:absolute; right:0; bottom:0}
+  .ruler{position:absolute; inset:0; overflow:visible; pointer-events:none}
+  .ruler text{font-family:var(--mono)}
   .totalbar{border-top:1px solid var(--line); margin-top:16px; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline}
   .totalbar .t{font-family:var(--sans); font-size:26px}
   .ph{font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--warn); text-transform:uppercase}
@@ -319,7 +323,10 @@
         <div><div id="cfgList"></div></div>
         <div>
           <div class="stage" id="stage2">
-            <div class="frame" id="frame2" style="width:220px;height:220px"><div class="window"><img id="preview2" alt="Selected photo preview"></div></div>
+            <div class="rulerwrap" id="rulerWrap">
+              <svg class="ruler" id="ruler2" aria-hidden="true"></svg>
+              <div class="frame" id="frame2"><div class="window"><img id="preview2" alt="Selected photo preview"></div></div>
+            </div>
             <div class="scalehint" id="scaleHint2"></div>
           </div>
           <div class="totalbar"><span class="ph" id="ph2">Estimated total</span><span class="t" id="total2">$0.00</span></div>
@@ -1186,13 +1193,45 @@ p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
    against WIDTH) yields the same absolute inset on all four sides. Referencing the
    frame's width in inches makes that a true 1/4" in either orientation. Floored at 1%. */
 function borderPct(p){return 4;} // symmetric minimum mat, ~4% of the print's width, so it scales with size. Julie sets the true border.
+const RULER_GUT=28;                 // px reserved on the top & left edges for tick marks + labels
+const RULER_AVAIL_H=300;            // target print height in the stage; width comes from the stage
 function renderPreview2(){
   const p=state.photos.find(x=>x.id==state.activeId)||state.photos[0];if(!p)return;
-  const[w,h]=orientedDims(p);$("frame2").style.width=(w*PX_PER_IN+48)+"px";$("frame2").style.height=(h*PX_PER_IN+48)+"px";
-  const win=$("frame2").querySelector(".window");win.style.padding='0';win.style.background='#C8C8C8';
-  const img=$("preview2");img.src=p.url;img.style.objectPosition=`${p.posX}% ${p.posY}%`;
-  $("scaleHint2").textContent=`${p.name} · ${p.size} in`;makeDraggable(img,p);
+  const stage=$("stage2"), G=RULER_GUT;
+  const availW=((stage.clientWidth||420)-60), availH=RULER_AVAIL_H;   // 60 = stage padding L+R
+  const[pw,ph]=orientedDims(p);
+  // Fill the stage: scale the print (keeping its aspect) to the largest that fits the area.
+  // ppi = display pixels per inch — small and large prints fill the same box, and the ruler
+  // ticks (1 per inch) are what reveal the true size.
+  const ppi=Math.max(4, Math.min((availW-G)/pw, (availH-G)/ph));
+  const fw=Math.round(pw*ppi), fh=Math.round(ph*ppi);
+  const wrap=$("rulerWrap"); wrap.style.width=(fw+G)+"px"; wrap.style.height=(fh+G)+"px";
+  const frame=$("frame2"); frame.style.width=fw+"px"; frame.style.height=fh+"px";
+  const win=frame.querySelector(".window"); win.style.padding='0'; win.style.background='#C8C8C8';
+  const img=$("preview2"); img.src=p.url; img.style.objectPosition=`${p.posX}% ${p.posY}%`;
+  drawRuler($("ruler2"), pw, ph, ppi, G, fw, fh);
+  $("scaleHint2").textContent=`${p.name} · ${p.size} in`; makeDraggable(img,p);
 }
+// Build the inch ruler as inline SVG: a baseline + one tick per inch along the top and left
+// edges, with numbered labels spaced so they never crowd (every 1/2/5 in by print size).
+function drawRuler(svg,wIn,hIn,ppi,G,fw,fh){
+  const W=fw+G, H=fh+G, maxDim=Math.max(wIn,hIn);
+  const step = maxDim<=12?1 : maxDim<=24?2 : 5;
+  const col='var(--plum)', minor='rgba(83,66,112,.5)';
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.setAttribute('width',W); svg.setAttribute('height',H);
+  let s=`<line x1="${G}" y1="${G}" x2="${W}" y2="${G}" stroke="${minor}" stroke-width="1"/>`;
+  s+=`<line x1="${G}" y1="${G}" x2="${G}" y2="${H}" stroke="${minor}" stroke-width="1"/>`;
+  for(let i=0;i<=wIn+1e-6;i++){ const x=G+i*ppi; const maj=(i%step===0)||i===Math.round(wIn); const L=maj?9:5;
+    s+=`<line x1="${x}" y1="${G}" x2="${x}" y2="${G-L}" stroke="${maj?col:minor}" stroke-width="1"/>`;
+    if(maj) s+=`<text x="${x}" y="${G-L-2}" fill="${col}" font-size="8.5" text-anchor="middle">${i}</text>`; }
+  for(let j=0;j<=hIn+1e-6;j++){ const y=G+j*ppi; const maj=(j%step===0)||j===Math.round(hIn); const L=maj?9:5;
+    s+=`<line x1="${G}" y1="${y}" x2="${G-L}" y2="${y}" stroke="${maj?col:minor}" stroke-width="1"/>`;
+    if(maj) s+=`<text x="${G-L-2}" y="${y+3}" fill="${col}" font-size="8.5" text-anchor="end">${j}</text>`; }
+  s+=`<text x="2" y="${G-4}" fill="${col}" font-size="8">in</text>`;
+  svg.innerHTML=s;
+}
+// Fit depends on stage width, so re-fit on resize while step 2 is showing.
+let _rulerRz; window.addEventListener("resize",()=>{clearTimeout(_rulerRz);_rulerRz=setTimeout(()=>{ if(!$("panel2").classList.contains("hidden")) renderPreview2(); },120);});
 
 /* ---- step 3: crop + either/or editor ---- */
 function renderCrops(){
