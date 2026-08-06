@@ -132,6 +132,7 @@
   .crop .nm{font-family:var(--sans); font-size:17px; margin-bottom:2px}
   .crop .spec{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-bottom:12px}
   .draghint{font-family:var(--mono); font-size:10.5px; color:var(--ink-soft); margin-top:6px}
+  .bordernote{font-family:var(--mono); font-size:10px; line-height:1.5; color:var(--plum); margin-top:5px; max-width:40ch}
     /* The white paper needs no outline — it reads on its own against the darker
      surround, the way a print does against a gallery wall. */
   .cropframe.bordered{background:#fff; border-color:transparent; display:flex; align-items:center; justify-content:center}
@@ -312,7 +313,7 @@
     <!-- STEP 2 -->
     <div class="step-panel hidden" id="panel2">
       <h2 class="step-h">Print options</h2>
-      <p class="step-sub">Choose a paper and size for each photo. Volume discounts apply automatically based on your total number of prints.</p>
+      <p class="step-sub">Choose a paper and size for each photo — we start each at the largest sharp size that matches its shape, adjust anytime. Volume discounts apply automatically based on your total number of prints.</p>
       <div class="specnote" style="margin-top:0;margin-bottom:16px">Don't see the size, paper, or finish you need? We also produce custom, panoramic, and exhibition prints. We offer framing, mounting, retouching, drum scanning, and gallery consultations. <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">Contact the studio</a> for anything custom.</div>
       <div class="cfg-cols">
         <div><div id="cfgList"></div></div>
@@ -324,7 +325,7 @@
           <div class="totalbar"><span class="ph" id="ph2">Estimated total</span><span class="t" id="total2">$0.00</span></div>
         </div>
       </div>
-      <div class="archnote">Pochron Studios specializes in archival prints, chosen for quality, color accuracy, and value that lasts. Every print is individually reviewed before it leaves the studio, so your prints hold their color for generations. Not sure which to pick? We recommend Baryta Satin for most images.</div>
+      <div class="archnote">Pochron Studios specializes in archival prints, chosen for quality and color accuracy that lasts. Every print is individually reviewed before it leaves the studio, so your prints hold their color for generations. Not sure which to pick? We recommend Baryta Satin for most images.</div>
       <div class="navrow"><button class="btn" id="backTo1">Back</button><button class="btn primary" id="toStep3">Next: edit, crop &amp; review</button></div>
     </div>
 
@@ -1160,12 +1161,12 @@ function renderCfg(){
   $("cfgList").innerHTML=state.photos.map(p=>{
     const dpi=dpiFor(p);let warn="";
     if(dpi<DPI_MIN){warn=tooSmallEverywhere(p)?`<span class="warnbadge">⚠ ${dpi} dpi. Too low-res for any size we offer. <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">Contact the studio</a> for a custom small print</span>`:`<span class="warnbadge">⚠ ${dpi} dpi. Too small for ${p.size}. Choose a smaller size or a higher-res file.</span>`;}
-    else if(dpi<DPI_GOOD){warn=`<span class="warnbadge" style="color:var(--warn)">${dpi} dpi. Could be sharper at ${p.size}. Try a smaller size or a higher-res file.</span>`;}
+    else if(dpi<DPI_GOOD){warn=`<span class="warnbadge" style="color:var(--warn)">${dpi} dpi. May appear blurry at ${p.size}. A smaller size prints crisper.</span>`;}
     return `<div class="cfg" data-id="${p.id}" aria-selected="${state.activeId==p.id}">
       <img class="th" src="${p.url}" data-id="${p.id}">
       <div class="fields">
         <div class="field"><label>Paper</label><select data-f="paper" data-id="${p.id}">${PAPERS.map(pp=>`<option value="${pp.id}" ${pp.id===p.paper?"selected":""}>${pp.label}</option>`).join("")}</select></div>
-        <div class="field"><label>Size (in)</label><select data-f="size" data-id="${p.id}">${SIZES.map(s=>`<option value="${s}" ${s===p.size?"selected":""}>${s}${fitsAspect(p,s)?" · fits your photo":""}</option>`).join("")}</select></div>
+        <div class="field"><label>Size (in)</label><select data-f="size" data-id="${p.id}">${SIZES.map(s=>`<option value="${s}" ${s===p.size?"selected":""}>${s}${fitsAspect(p,s)?" · matches your photo's shape":""}</option>`).join("")}</select></div>
         <div class="field"><label>Qty</label><input type="number" min="1" value="${p.qty}" data-f="qty" data-id="${p.id}"></div>
         <div class="field" style="justify-content:flex-end">${warn}</div>
         <div class="paperdesc">${PAPER_DESC[p.paper]||""}</div>
@@ -1184,7 +1185,7 @@ p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
 /* Bordered frame carries the print's aspect ratio, so CSS % padding (resolved
    against WIDTH) yields the same absolute inset on all four sides. Referencing the
    frame's width in inches makes that a true 1/4" in either orientation. Floored at 1%. */
-function borderPct(p){const w=dims(p.size)[0];return Math.max(0.25/w*100,1);}
+function borderPct(p){return 4;} // symmetric minimum mat, ~4% of the print's width, so it scales with size. Julie sets the true border.
 function renderPreview2(){
   const p=state.photos.find(x=>x.id==state.activeId)||state.photos[0];if(!p)return;
   const[w,h]=orientedDims(p);$("frame2").style.width=(w*PX_PER_IN+48)+"px";$("frame2").style.height=(h*PX_PER_IN+48)+"px";
@@ -1196,7 +1197,7 @@ function renderPreview2(){
 /* ---- step 3: crop + either/or editor ---- */
 function renderCrops(){
   $("cropList").innerHTML=state.photos.map(p=>{
-    const dpi=dpiFor(p);let cls="ok",lab="Sharp";if(dpi<DPI_MIN){cls="bad";lab="Too small";}else if(dpi<DPI_GOOD){cls="warn";lab="Could be sharper";}
+    const dpi=dpiFor(p);let cls="ok",lab="Sharp";if(dpi<DPI_MIN){cls="bad";lab="Too small";}else if(dpi<DPI_GOOD){cls="warn";lab="Medium resolution";}
     const paper=PAPERS.find(x=>x.id===p.paper).label;
     // Self-edit with a real render → show Filerobot's actual output (crop + tone baked in).
     // Otherwise show the original (studio path) with the light CSS approximation.
@@ -1215,11 +1216,12 @@ function renderCrops(){
     // Bordered preview takes the shape of the actual print so the white margin the
     // customer sees is the real margin; fill mode keeps the square repositioning frame.
     const[pw,ph]=orientedDims(p);
-    const frameStyle=bord?` style="padding:${borderPct(p)}%;aspect-ratio:${pw}/${ph}"`:'';
+    const frameStyle=` style="aspect-ratio:${pw}/${ph}${bord?`;padding:${borderPct(p)}%`:''}"`;
     return `<div class="crop">
       <div class="previewcol">
         <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${frameStyle}><img src="${previewSrc}" style="object-position:${bord?'50% 50%':`${p.posX}% ${p.posY}%`};${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
         <div class="draghint">${useBaked?'your edit · ':''}${bord?'white border · your whole image fits':'drag to reposition · fills the print'} · ${p.size} in · <span class="badge ${cls}"><span class="dot ${cls}"></span>${dpi} dpi · ${lab}</span></div>
+        ${bord?'<div class="bordernote">Preview border is approximate. Pochron Studios sets the final border to fit your whole image at your chosen size.</div>':''}
         <div class="presentation">
           <div class="pfield"><label>Border</label><select data-f="border" data-id="${p.id}">${Object.entries(BORDERS).map(([k,v])=>`<option value="${k}" ${k===p.border?"selected":""}>${v.label}</option>`).join("")}</select></div>
         </div>
