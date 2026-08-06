@@ -105,6 +105,9 @@
   .ruler{position:absolute; inset:0; overflow:visible; pointer-events:none}
   .ruler text{font-family:var(--mono)}
   .totalbar{border-top:1px solid var(--line); margin-top:16px; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline}
+  .savedbar{font-family:var(--mono); font-size:11.5px; text-align:right; margin-top:5px; min-height:1em}
+  .savedbar .save{color:var(--ok)}
+  .savedbar .nudge{color:var(--ink-soft)}
   .totalbar .t{font-family:var(--sans); font-size:26px}
   .ph{font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--warn); text-transform:uppercase}
 
@@ -331,6 +334,7 @@
             <div class="scalehint" id="scaleHint2"></div>
           </div>
           <div class="totalbar"><span class="ph" id="ph2">Estimated total</span><span class="t" id="total2">$0.00</span></div>
+          <div class="savedbar" id="saved2"></div>
         </div>
       </div>
       <div class="archnote">Pochron Studios specializes in archival prints, chosen for quality and color accuracy that lasts. Every print is individually reviewed before it leaves the studio, so your prints hold their color for generations. Not sure which to pick? We recommend Baryta Satin for most images.</div>
@@ -345,6 +349,7 @@
       <div class="archnote" style="margin:18px 0">Every print is reviewed before it's made. We read your edits alongside your original, and we'll reach out if anything looks unintended. For retouching, restoration, or more involved work, <a href="https://www.pochronstudios.com/contactus" target="_blank" rel="noopener">contact our full-service studio</a>.</div>
       <div id="dpiGate3"></div>
       <div class="totalbar"><span class="ph" id="ph3">Estimated total</span><span class="t" id="total3">$0.00</span></div>
+      <div class="savedbar" id="saved3"></div>
       <div class="navrow"><button class="btn" id="backTo2">Back</button><button class="btn primary" id="toStep4">Next: checkout</button></div>
     </div>
 
@@ -746,14 +751,17 @@ function updateTotals(){
   const g=money(grandTotal());
   if($("total2"))$("total2").textContent=g;
   if($("total3"))$("total3").textContent=g;
-  const t=volumeTier(),q=totalQty();
+  const t=volumeTier(),q=totalQty(),saved=+(subTotal()-grandTotal()).toFixed(2);
   let lab="Estimated total";
   if(t&&t.rate)lab=`Estimated total · ${t.label} on ${q} prints`;
   else if(t&&t.rate===null)lab=`${q} prints · contact us for volume pricing`;
-  // Nudge toward the next better-rate tier: "add N more to save X%".
-  const better=VOLUME.filter(v=>v.min>q && (v.rate||0)>((t&&t.rate)||0)).sort((a,b)=>a.min-b.min)[0];
-  if(better&&better.rate) lab+=` · add ${better.min-q} more to ${better.label.toLowerCase()}`;
   ["ph2","ph3"].forEach(id=>{if($(id))$(id).textContent=lab;});
+  // Savings amount + next-tier nudge, shown under the running total on steps 2 & 3.
+  const better=VOLUME.filter(v=>v.min>q && (v.rate||0)>((t&&t.rate)||0)).sort((a,b)=>a.min-b.min)[0];
+  let sub2="";
+  if(t&&t.rate) sub2+=`<span class="save">You saved ${money(saved)}</span>`;
+  if(better&&better.rate) sub2+=`${sub2?" · ":""}<span class="nudge">add ${better.min-q} more to ${better.label.toLowerCase()}</span>`;
+  ["saved2","saved3"].forEach(id=>{if($(id))$(id).innerHTML=sub2;});
 }
 function dpiAtSize(p,sizeStr){if(!p.w)return Infinity;const[w,h]=dims(sizeStr);
   return Math.round(Math.max(Math.min(p.w/w,p.h/h),Math.min(p.w/h,p.h/w)));}
