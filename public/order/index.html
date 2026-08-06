@@ -91,6 +91,8 @@
   .prep{margin-top:10px}
   .prep summary{font-family:var(--mono); font-size:11px; color:var(--petrol); cursor:pointer}
   .cfg .eaprice{font-family:var(--mono); font-size:12px; color:var(--ink-soft)}
+  .cfg .eaprice s{opacity:.5}
+  .cfg .eaprice .offtag{color:var(--ok); font-weight:600}
   .cfg .rm2{border:0; background:transparent; color:var(--ink-soft); font-size:12px; text-decoration:underline}
   .warnbadge{font-family:var(--mono); font-size:10px; color:var(--bad)}
 
@@ -746,7 +748,9 @@ function photoTotal(p){return +((unitPrice(p)*p.qty)+ccFee(p)).toFixed(2);}
 function subTotal(){return +state.photos.reduce((s,p)=>s+photoTotal(p),0).toFixed(2);}
 function totalQty(){return state.photos.reduce((s,p)=>s+(+p.qty||1),0);}
 function volumeTier(){const q=totalQty();return VOLUME.find(v=>q>=v.min);}
-function grandTotal(){const t=volumeTier(),sub=subTotal();return t&&t.rate?+(sub*(1-t.rate)).toFixed(2):sub;}
+function discRate(){const t=volumeTier();return (t&&t.rate)||0;}
+function discTotal(p){return +(photoTotal(p)*(1-discRate())).toFixed(2);}
+function grandTotal(){return +state.photos.reduce((s,p)=>s+discTotal(p),0).toFixed(2);}
 function updateTotals(){
   const g=money(grandTotal());
   if($("total2"))$("total2").textContent=g;
@@ -1189,7 +1193,7 @@ function renderCfg(){
         <div class="field"><label>Qty</label><input type="number" min="1" value="${p.qty}" data-f="qty" data-id="${p.id}"></div>
         <div class="field" style="justify-content:flex-end">${warn}</div>
         <div class="paperdesc">${PAPER_DESC[p.paper]||""}</div>
-        <div class="rowfoot"><span class="eaprice">${money(unitPrice(p))} ea${p.julie?` · +${money(CC_ADD)} color correction (once)`:""} · ${money(photoTotal(p))} total</span><button class="rm2" data-id="${p.id}">remove</button></div>
+        <div class="rowfoot"><span class="eaprice">${money(unitPrice(p))} ea${p.julie?` · +${money(CC_ADD)} color correction (once)`:""} · ${discRate()>0?`<s>${money(photoTotal(p))}</s> ${money(discTotal(p))} total <span class="offtag">${Math.round(discRate()*100)}% off</span>`:`${money(photoTotal(p))} total`}</span><button class="rm2" data-id="${p.id}">remove</button></div>
       </div></div>`;
   }).join("");
   $("cfgList").querySelectorAll("select,input").forEach(el=>el.onchange=()=>{
