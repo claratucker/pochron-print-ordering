@@ -201,6 +201,7 @@
   .summary{border:1px solid var(--line); background:var(--paper-2); border-radius:3px; padding:14px 18px; margin-bottom:14px}
   .summary .row{display:flex; justify-content:space-between; align-items:baseline; font-size:13.5px; padding:5px 0; color:var(--ink-soft)}
   .summary .row.tot{border-top:1px solid var(--line); margin-top:6px; padding-top:11px; color:var(--ink); font-family:var(--sans); font-size:22px}
+  .summary .row.saved{color:var(--ok)}
   .bad-field{border-color:var(--bad) !important; background:#fff6f4 !important}
   .studio-intro{font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin:0 0 20px}
   .studio-intro a{color:var(--petrol); text-decoration:underline}
@@ -749,6 +750,9 @@ function updateTotals(){
   let lab="Estimated total";
   if(t&&t.rate)lab=`Estimated total · ${t.label} on ${q} prints`;
   else if(t&&t.rate===null)lab=`${q} prints · contact us for volume pricing`;
+  // Nudge toward the next better-rate tier: "add N more to save X%".
+  const better=VOLUME.filter(v=>v.min>q && (v.rate||0)>((t&&t.rate)||0)).sort((a,b)=>a.min-b.min)[0];
+  if(better&&better.rate) lab+=` · add ${better.min-q} more to ${better.label.toLowerCase()}`;
   ["ph2","ph3"].forEach(id=>{if($(id))$(id).textContent=lab;});
 }
 function dpiAtSize(p,sizeStr){if(!p.w)return Infinity;const[w,h]=dims(sizeStr);
@@ -1346,10 +1350,11 @@ function renderCheckout(){
   sel.innerHTML=SHIP_METHODS.map(m=>`<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label} · ${money(m.cost)}</option>`).join("");
   sel.onchange=e=>{state.shipMethod=e.target.value;renderCheckout();};
   $("whiteLabel").checked=state.whiteLabel;$("whiteLabelWrap").classList.toggle("on",state.whiteLabel);
-  const prints=grandTotal(), ship=shipCost(), total=+(prints+ship).toFixed(2), t=volumeTier();
+  const sub=subTotal(), prints=grandTotal(), ship=shipCost(), total=+(prints+ship).toFixed(2), t=volumeTier(), saved=+(sub-prints).toFixed(2);
   refreshDpiGates();
   $("coSummary").innerHTML=`
-    <div class="row"><span>Prints${(t&&t.rate)?" · "+t.label.toLowerCase()+" applied":""}</span><span>${money(prints)}</span></div>
+    <div class="row"><span>Prints</span><span>${money(sub)}</span></div>
+    ${(t&&t.rate)?`<div class="row saved"><span>Volume discount · ${t.label.toLowerCase()}</span><span>\u2212${money(saved)}</span></div>`:""}
     <div class="row"><span>Shipping</span><span>${money(ship)}</span></div>
     <div class="row"><span>Tax</span><span>calculated from address</span></div>
     <div class="row tot"><span>Total</span><span>${money(total)}</span></div>`;
