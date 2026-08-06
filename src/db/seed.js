@@ -1,6 +1,6 @@
 import { db } from './index.js';
 import {
-  PAPERS, PAPER_DESC, SIZES, PRICES, SHIP_METHODS, VOLUME, SETTINGS,
+  PAPERS, PAPER_DESC, SIZES, PRICES, SHIP_METHODS, SHIP_ZONES, VOLUME, SETTINGS,
 } from '../catalog-defaults.js';
 
 // Idempotent seed of the editable catalog. Existing edited rows are preserved
@@ -9,7 +9,7 @@ const force = process.argv.includes('--force');
 
 const seed = db.transaction(() => {
   if (force) {
-    for (const t of ['papers', 'sizes', 'prices', 'shipping_methods', 'volume_tiers', 'settings']) {
+    for (const t of ['papers', 'sizes', 'prices', 'shipping_methods', 'ship_zones', 'volume_tiers', 'settings']) {
       db.prepare(`DELETE FROM ${t}`).run();
     }
   }
@@ -31,6 +31,11 @@ const seed = db.transaction(() => {
     `INSERT OR IGNORE INTO shipping_methods (id,label,cost,sort) VALUES (?,?,?,?)`
   );
   SHIP_METHODS.forEach((m, i) => ship.run(m.id, m.label, m.cost, i));
+
+  const zone = db.prepare(
+    `INSERT OR IGNORE INTO ship_zones (key,label,kind,standard,expedited,sort) VALUES (?,?,?,?,?,?)`
+  );
+  SHIP_ZONES.forEach((z) => zone.run(z.key, z.label, z.kind, z.standard, z.expedited, z.sort));
 
   const vol = db.prepare(
     `INSERT OR IGNORE INTO volume_tiers (min_qty,rate,label) VALUES (?,?,?)`

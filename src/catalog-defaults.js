@@ -35,6 +35,20 @@ export const SHIP_METHODS = [
   { id: 'expedited', label: 'Expedited (2–3 business days)', cost: 28 },
 ];
 
+// Shipping by destination region. Domestic is charged as-is; international is a
+// ceiling ("up to $X", captured at the real cost). States/countries map to these
+// region keys in code; these rows are just the editable prices. expedited=null
+// means the region offers a single (standard) speed.
+export const SHIP_ZONES = [
+  { key: 'ne',   label: 'Northeast & Mid-Atlantic',     kind: 'domestic', standard: 15, expedited: 26, sort: 0 },
+  { key: 'se',   label: 'Southeast & Great Lakes',      kind: 'domestic', standard: 21, expedited: 34, sort: 1 },
+  { key: 'pm',   label: 'Plains, S-Central & Mountain', kind: 'domestic', standard: 32, expedited: 48, sort: 2 },
+  { key: 'wc',   label: 'West Coast',                   kind: 'domestic', standard: 42, expedited: 60, sort: 3 },
+  { key: 'akhi', label: 'Alaska, Hawaii & Territories', kind: 'domestic', standard: 60, expedited: 85, sort: 4 },
+  { key: 'camx', label: 'Canada & Mexico',              kind: 'intl',     standard: 35, expedited: null, sort: 5 },
+  { key: 'eu',   label: 'Europe & UK',                  kind: 'intl',     standard: 50, expedited: null, sort: 6 },
+];
+
 // Volume discount by TOTAL print count across the order (§7). 100+ = manual quote.
 export const VOLUME = [
   { min: 100, rate: null, label: 'Contact us for custom pricing' },
@@ -58,4 +72,5 @@ export const SETTINGS = {
   dpi_good: DPI_GOOD,
   dpi_min: DPI_MIN,
   px_per_in: PX_PER_IN,
+  free_ship_over: 0,   // free shipping when subtotal >= this; 0 = off
 };

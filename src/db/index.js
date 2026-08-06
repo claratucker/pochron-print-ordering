@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { SHIP_ZONES } from '../catalog-defaults.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
@@ -33,6 +34,10 @@ CREATE TABLE IF NOT EXISTS volume_tiers (
 );
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ship_zones (
+  key TEXT PRIMARY KEY, label TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'domestic',
+  standard REAL, expedited REAL, sort INTEGER DEFAULT 0
 );
 
 -- Uploaded files. Metadata (w/h/profile/depth/dpi) is extracted server-side.
@@ -163,5 +168,13 @@ ensureColumn('orders', 'tax_status', "TEXT DEFAULT 'none'");
 // Reset whenever the card is re-authorized, so the expiry clock restarts.
 ensureColumn('orders', 'authorized_at', 'TEXT');
 ensureColumn('orders', 'reauth_count', 'INTEGER DEFAULT 0');
+
+// Seed default shipping zones + free-ship setting on first boot. Idempotent:
+// only runs when empty, so Julie's later edits are never overwritten.
+if (db.prepare('SELECT COUNT(*) AS c FROM ship_zones').get().c === 0) {
+  const ins = db.prepare(`INSERT INTO ship_zones (key,label,kind,standard,expedited,sort) VALUES (?,?,?,?,?,?)`);
+  db.transaction(() => SHIP_ZONES.forEach((z) => ins.run(z.key, z.label, z.kind, z.standard, z.expedited, z.sort)))();
+}
+db.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('free_ship_over','0')`).run();
 
 export { DATA_DIR };

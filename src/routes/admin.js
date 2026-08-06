@@ -17,7 +17,9 @@ const CatalogPatch = z.object({
   prices: z.record(z.record(z.number())).optional(),          // { fam: { size: price } }
   shipping: z.array(z.object({ id: z.string(), label: z.string(), cost: z.number() })).optional(),
   volume: z.array(z.object({ min: z.number(), rate: z.number().nullable(), label: z.string() })).optional(),
-  settings: z.record(z.number()).optional(),                  // cc_add, dpi_good, dpi_min, px_per_in
+  shipZones: z.array(z.object({ key: z.string(), label: z.string(), kind: z.string(),
+    standard: z.number().nullable(), expedited: z.number().nullable(), sort: z.number().optional() })).optional(),
+  settings: z.record(z.number()).optional(),                  // cc_add, dpi_good, dpi_min, px_per_in, free_ship_over
   sizes: z.array(z.string()).optional(),
 }).strict();
 
@@ -45,6 +47,14 @@ adminRouter.put('/catalog', (req, res) => {
          ON CONFLICT(id) DO UPDATE SET label=excluded.label, cost=excluded.cost`
       );
       patch.shipping.forEach((m, i) => up.run(m.id, m.label, m.cost, i));
+    }
+    if (patch.shipZones) {
+      const up = db.prepare(
+        `INSERT INTO ship_zones (key,label,kind,standard,expedited,sort) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(key) DO UPDATE SET label=excluded.label, kind=excluded.kind,
+           standard=excluded.standard, expedited=excluded.expedited, sort=excluded.sort`
+      );
+      patch.shipZones.forEach((z, i) => up.run(z.key, z.label, z.kind, z.standard, z.expedited, z.sort ?? i));
     }
     if (patch.volume) {
       db.prepare('DELETE FROM volume_tiers').run();
