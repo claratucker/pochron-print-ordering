@@ -50,7 +50,13 @@
     </div>
     <div class="card">
       <h2>Shipping methods</h2>
+      <p class="muted">Flat rates — now used for international and as a fallback. US orders are priced by region below.</p>
       <table><thead><tr><th>Label</th><th>Cost</th></tr></thead><tbody id="shipBody"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Shipping by region</h2>
+      <p class="muted">US orders are charged by the customer's state \u2192 region. International zones are shown to the customer as \u201cup to $X\u201d and captured at the real cost. Blank = none.</p>
+      <table><thead><tr><th>Region</th><th>Standard</th><th>Expedited</th></tr></thead><tbody id="zoneBody"></tbody></table>
     </div>
     <div class="card">
       <h2>Volume tiers</h2>
@@ -94,13 +100,17 @@ function render(c) {
   $('volBody').innerHTML = c.volume.map(v =>
     `<tr><td>${v.min}</td><td><input data-vol="${v.min}" data-k="rate" value="${v.rate ?? ''}"></td><td><input class="wide" data-vol="${v.min}" data-k="label" value="${v.label}"></td></tr>`).join('');
 
+  $('zoneBody').innerHTML = (c.shipZones || []).map(z =>
+    `<tr><td>${z.label}<div class="muted">${z.kind}</div></td><td>$<input data-zone="${z.key}" data-k="standard" value="${z.standard ?? ''}"></td><td>$<input data-zone="${z.key}" data-k="expedited" value="${z.expedited ?? ''}"></td></tr>`).join('');
+
   const SETTING_LABELS = {
     cc_add: 'Hand Color Correction fee ($ per image)',
     dpi_good: 'Good DPI (no warning above this)',
     dpi_min: 'Minimum DPI (warn below this)',
     px_per_in: 'Preview pixels per inch',
+    free_ship_over: 'Free US standard shipping over ($; 0 = off)',
   };
-  const s = { cc_add: c.ccAdd, dpi_good: c.dpiGood, dpi_min: c.dpiMin, px_per_in: c.pxPerIn };
+  const s = { cc_add: c.ccAdd, dpi_good: c.dpiGood, dpi_min: c.dpiMin, px_per_in: c.pxPerIn, free_ship_over: c.freeShipOver ?? 0 };
   $('settings').innerHTML = Object.entries(s).map(([k, v]) =>
     `<label>${SETTING_LABELS[k] || k}<br><input data-set="${k}" value="${v}"></label>`).join('');
 }
@@ -119,10 +129,17 @@ $('save').onclick = async () => {
     const m = (volMap[i.dataset.vol] ||= { min: +i.dataset.vol });
     m[i.dataset.k] = i.dataset.k === 'rate' ? (i.value.trim() === '' ? null : parseFloat(i.value)) : i.value;
   });
+  const zoneMap = {};
+  document.querySelectorAll('[data-zone]').forEach(i => {
+    const z = (zoneMap[i.dataset.zone] ||= { key: i.dataset.zone });
+    z[i.dataset.k] = i.value.trim() === '' ? null : parseFloat(i.value);
+  });
+  const zoneByKey = Object.fromEntries((cat.shipZones || []).map(z => [z.key, z]));
+  const shipZones = Object.values(zoneMap).map(z => ({ ...zoneByKey[z.key], standard: z.standard, expedited: z.expedited }));
   const settings = {};
   document.querySelectorAll('[data-set]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v)) settings[i.dataset.set] = v; });
 
-  const body = { prices, shipping: Object.values(shipMap), volume: Object.values(volMap), settings };
+  const body = { prices, shipping: Object.values(shipMap), volume: Object.values(volMap), shipZones, settings };
   const r = await fetch('/api/admin/catalog', { method: 'PUT', headers: H(), body: JSON.stringify(body) });
   $('saveMsg').innerHTML = r.ok ? '<span class="ok">Saved.</span>' : '<span class="bad">Save failed.</span>';
   if (r.ok) render((await r.json()).catalog);
