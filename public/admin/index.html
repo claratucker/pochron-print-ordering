@@ -49,13 +49,8 @@
       <div id="priceTables"></div>
     </div>
     <div class="card">
-      <h2>Shipping methods</h2>
-      <p class="muted">Flat rates — now used for international and as a fallback. US orders are priced by region below.</p>
-      <table><thead><tr><th>Label</th><th>Cost</th></tr></thead><tbody id="shipBody"></tbody></table>
-    </div>
-    <div class="card">
       <h2>Shipping by region</h2>
-      <p class="muted">US orders are charged by the customer's state &rarr; region. International zones are shown to the customer as &ldquo;up to $X&rdquo; and captured at the real cost. Blank = none.</p>
+      <p class="muted">US orders are charged by the customer's state &rarr; region. International zones (Canada/Mexico, Europe/UK) are charged at the zone price; other countries are quoted by the studio. Blank = none.</p>
       <table><thead><tr><th>Region</th><th>Standard</th><th>Expedited</th></tr></thead><tbody id="zoneBody"></tbody></table>
     </div>
     <div class="card">
@@ -94,8 +89,6 @@ function render(c) {
     return `<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)">${label}</h3><table><thead><tr><th>Size (in)</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>`;
   }).join('<div style="height:14px"></div>');
 
-  $('shipBody').innerHTML = c.shipping.map(m =>
-    `<tr><td><input class="wide" data-ship="${m.id}" data-k="label" value="${m.label}"></td><td>$<input data-ship="${m.id}" data-k="cost" value="${m.cost}"></td></tr>`).join('');
 
   $('volBody').innerHTML = c.volume.map(v =>
     `<tr><td>${v.min}</td><td><input data-vol="${v.min}" data-k="rate" value="${v.rate ?? ''}"></td><td><input class="wide" data-vol="${v.min}" data-k="label" value="${v.label}"></td></tr>`).join('');
@@ -120,10 +113,6 @@ $('save').onclick = async () => {
   document.querySelectorAll('[data-fam]').forEach(i => {
     const v = parseFloat(i.value); if (!isNaN(v)) (prices[i.dataset.fam] ||= {})[i.dataset.size] = v;
   });
-  const shipMap = {};
-  document.querySelectorAll('[data-ship]').forEach(i => {
-    (shipMap[i.dataset.ship] ||= { id: i.dataset.ship })[i.dataset.k] = i.dataset.k === 'cost' ? parseFloat(i.value) : i.value;
-  });
   const volMap = {};
   document.querySelectorAll('[data-vol]').forEach(i => {
     const m = (volMap[i.dataset.vol] ||= { min: +i.dataset.vol });
@@ -139,7 +128,7 @@ $('save').onclick = async () => {
   const settings = {};
   document.querySelectorAll('[data-set]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v)) settings[i.dataset.set] = v; });
 
-  const body = { prices, shipping: Object.values(shipMap), volume: Object.values(volMap), shipZones, settings };
+  const body = { prices, volume: Object.values(volMap), shipZones, settings };
   const r = await fetch('/api/admin/catalog', { method: 'PUT', headers: H(), body: JSON.stringify(body) });
   $('saveMsg').innerHTML = r.ok ? '<span class="ok">Saved.</span>' : '<span class="bad">Save failed.</span>';
   if (r.ok) render((await r.json()).catalog);
