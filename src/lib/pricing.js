@@ -2,6 +2,8 @@
 // This is the real charge. The client total is a display convenience (§7).
 // Every function here mirrors the mockup's math one-to-one so the numbers match.
 
+import { SHIP_REGIONS } from '../catalog-defaults.js';
+
 const round2 = (n) => +Number(n).toFixed(2);
 export const dims = (s) => s.split('×').map(Number);
 
@@ -51,8 +53,39 @@ export function priceLine(cat, item, file) {
   };
 }
 
+// ── Shipping: domestic by region (state), non-US on the flat method for now ──
+function normalizeState(v) {
+  const t = String(v || '').trim().toUpperCase();
+  if (SHIP_REGIONS.states[t]) return t;                    // already a 2-letter code
+  return SHIP_REGIONS.names[t.toLowerCase()] || null;      // full name -> abbr
+}
+function isUS(country) {
+  const c = String(country ?? 'US').trim().toLowerCase();
+  return !c || ['us', 'usa', 'united states', 'united states of america'].includes(c);
+}
+// Returns { cost, zone, label, method }. printsTotal is the discounted goods total,
+// used for the free-shipping threshold.
+export function shippingForZone(cat, address, methodId, printsTotal) {
+  const exp = methodId === 'expedited';
+  const free = Number(cat.freeShipOver || 0);
+  if (isUS(address?.country)) {
+    // Free shipping applies to domestic STANDARD only (never expedited, never international).
+    if (free > 0 && printsTotal >= free && !exp) return { cost: 0, zone: 'free', label: 'Free shipping', method: methodId };
+    const st = normalizeState(address?.state);
+    const zoneKey = (st && SHIP_REGIONS.states[st]) || SHIP_REGIONS.defaultZone;
+    const zone = (cat.shipZones || []).find((z) => z.key === zoneKey);
+    if (zone) {
+      const cost = exp ? (zone.expedited ?? zone.standard) : zone.standard;
+      return { cost: round2(cost), zone: zone.key, label: `${zone.label} \u00b7 ${exp ? 'Expedited' : 'Standard'}`, method: methodId };
+    }
+  }
+  // Fallback: existing flat method (non-US, or zones unavailable).
+  const m = cat.shipping.find((x) => x.id === methodId) || cat.shipping[0];
+  return { cost: m ? m.cost : 0, zone: 'flat', label: m?.label, method: m?.id };
+}
+
 // ── Whole-order math (subtotal → volume tier → grand total) ──
-export function priceOrder(cat, items, files, shipMethodId) {
+export function priceOrder(cat, items, files, shipMethodId, address) {
   const fileById = Object.fromEntries((files || []).map((f) => [f.id, f]));
   const lines = items.map((it) => priceLine(cat, it, fileById[it.fileId]));
 
@@ -66,8 +99,8 @@ export function priceOrder(cat, items, files, shipMethodId) {
   const discountAmount = round2(subtotal * discountRate);
   const printsTotal = round2(subtotal - discountAmount);
 
-  const method = cat.shipping.find((m) => m.id === shipMethodId) || cat.shipping[0];
-  const shippingCost = method ? method.cost : 0;
+  const ship = shippingForZone(cat, address, shipMethodId, printsTotal);
+  const shippingCost = ship.cost;
 
   const anyTooSmall = lines.some((l) => l.dpiFlag === 'too_small');
 
@@ -75,7 +108,7 @@ export function priceOrder(cat, items, files, shipMethodId) {
     lines, subtotal, totalQty,
     tier: { min: tier.min, rate: tier.rate, label: tier.label },
     manualQuote, discountRate, discountAmount, printsTotal,
-    shipMethod: method?.id, shippingLabel: method?.label, shippingCost,
+    shipMethod: ship.method, shippingLabel: ship.label, shippingCost, shipZone: ship.zone,
     anyTooSmall,
     // Tax + final total are finished in finalizeTotals() once we have an address.
   };

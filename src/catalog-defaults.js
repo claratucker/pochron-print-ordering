@@ -49,6 +49,16 @@ export const SHIP_ZONES = [
   { key: 'eu',   label: 'Europe & UK',                  kind: 'intl',     standard: 50, expedited: null, sort: 6 },
 ];
 
+
+// state -> domestic zone (code-owned coverage; Julie edits prices, not membership).
+// Non-US falls back to the flat method until international ships. defaultZone
+// catches an unrecognized US state.
+export const SHIP_REGIONS = {
+  defaultZone: 'se',
+  states: { NY:'ne', NJ:'ne', CT:'ne', RI:'ne', MA:'ne', NH:'ne', VT:'ne', ME:'ne', PA:'ne', DE:'ne', MD:'ne', DC:'ne', VA:'ne', WV:'ne', OH:'ne', NC:'ne', SC:'se', GA:'se', FL:'se', AL:'se', MS:'se', TN:'se', KY:'se', IN:'se', MI:'se', IL:'se', WI:'se', MN:'se', IA:'se', MO:'se', AR:'pm', LA:'pm', TX:'pm', OK:'pm', KS:'pm', NE:'pm', SD:'pm', ND:'pm', CO:'pm', WY:'pm', MT:'pm', NM:'pm', ID:'pm', UT:'pm', AZ:'pm', NV:'wc', CA:'wc', OR:'wc', WA:'wc', AK:'akhi', HI:'akhi', PR:'akhi', VI:'akhi', GU:'akhi', AS:'akhi', MP:'akhi' },
+  names: { 'alabama':'AL', 'alaska':'AK', 'arizona':'AZ', 'arkansas':'AR', 'california':'CA', 'colorado':'CO', 'connecticut':'CT', 'delaware':'DE', 'district of columbia':'DC', 'florida':'FL', 'georgia':'GA', 'hawaii':'HI', 'idaho':'ID', 'illinois':'IL', 'indiana':'IN', 'iowa':'IA', 'kansas':'KS', 'kentucky':'KY', 'louisiana':'LA', 'maine':'ME', 'maryland':'MD', 'massachusetts':'MA', 'michigan':'MI', 'minnesota':'MN', 'mississippi':'MS', 'missouri':'MO', 'montana':'MT', 'nebraska':'NE', 'nevada':'NV', 'new hampshire':'NH', 'new jersey':'NJ', 'new mexico':'NM', 'new york':'NY', 'north carolina':'NC', 'north dakota':'ND', 'ohio':'OH', 'oklahoma':'OK', 'oregon':'OR', 'pennsylvania':'PA', 'rhode island':'RI', 'south carolina':'SC', 'south dakota':'SD', 'tennessee':'TN', 'texas':'TX', 'utah':'UT', 'vermont':'VT', 'virginia':'VA', 'washington':'WA', 'west virginia':'WV', 'wisconsin':'WI', 'wyoming':'WY', 'puerto rico':'PR' },
+};
+
 // Volume discount by TOTAL print count across the order (§7). 100+ = manual quote.
 export const VOLUME = [
   { min: 100, rate: null, label: 'Contact us for custom pricing' },

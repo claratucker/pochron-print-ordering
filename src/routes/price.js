@@ -18,7 +18,7 @@ const ItemSchema = z.object({
 const QuoteSchema = z.object({
   items: z.array(ItemSchema).min(1),
   shipMethod: z.string().optional(),
-  address: z.object({ state: z.string().optional(), zip: z.string().optional() }).partial().optional(),
+  address: z.object({ state: z.string().optional(), zip: z.string().optional(), country: z.string().optional() }).partial().optional(),
 });
 
 // POST /api/price/quote — the display total AND the number that will be charged
@@ -35,7 +35,7 @@ priceRouter.post('/quote', async (req, res) => {
 
   try {
     const cat = loadCatalog();
-    const quote = priceOrder(cat, items, files, shipMethod);
+    const quote = priceOrder(cat, items, files, shipMethod, address);
     const taxResult = await tax.quote({ printsTotal: quote.printsTotal, shippingCost: quote.shippingCost, address });
     res.json({ ...finalizeTotals(quote, taxResult.amount), taxStatus: taxResult.status });
   } catch (e) {

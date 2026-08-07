@@ -171,7 +171,7 @@ ordersRouter.post('/', async (req, res) => {
   let taxResult = { amount: 0, status: 'none', provider: 'none' };
   try {
     const cat = loadCatalog();
-    const q = priceOrder(cat, items, files, shipping.method);
+    const q = priceOrder(cat, items, files, shipping.method, shipping);
 
     // Low-res acknowledgment gate — any too-small image requires explicit ack (§4).
     if (q.anyTooSmall && !lowResAck) {

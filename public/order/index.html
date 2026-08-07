@@ -479,6 +479,7 @@ let PRICES={
 };
 const BORDERS={none:{label:"No border (fills the print)",add:0},border:{label:"White border (fits the whole image)",add:0}};
 let SHIP_METHODS=[{id:"standard",label:"Standard (5–7 business days)",cost:12},{id:"expedited",label:"Expedited (2–3 business days)",cost:28}];
+let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},defaultZone:'se'}; let FREE_SHIP_OVER=0;
 // Volume discounts apply to the whole order by total print count (from the pricing sheet).
 let VOLUME=[{min:100,rate:null,label:"Contact us for custom pricing"},{min:50,rate:.20,label:"Save 20%"},{min:25,rate:.15,label:"Save 15%"},{min:10,rate:.10,label:"Save 10%"},{min:1,rate:0,label:"Standard pricing"}];
 let CC_ADD=15; // Pochron Studios by-hand color correction — flat, charged ONCE per image (not per copy)
@@ -513,6 +514,9 @@ async function syncCatalog(){
     PRICES=j.prices;
     if(j.ccAdd!=null)CC_ADD=j.ccAdd;
     if(j.shipping&&j.shipping.length)SHIP_METHODS=j.shipping.map(s=>({id:s.id,label:s.label,cost:s.cost}));
+    if(j.shipZones&&j.shipZones.length)SHIP_ZONES=j.shipZones;
+    if(j.shipRegions&&j.shipRegions.states)SHIP_REGIONS=j.shipRegions;
+    if(typeof j.freeShipOver==='number')FREE_SHIP_OVER=j.freeShipOver;
     if(j.volume&&j.volume.length)VOLUME=j.volume.slice().sort((a,b)=>b.min-a.min);
     if(j.dpiGood)DPI_GOOD=j.dpiGood;
     if(j.dpiMin)DPI_MIN=j.dpiMin;
@@ -1356,18 +1360,36 @@ $("whiteLabel").onchange=e=>{state.whiteLabel=e.target.checked;$("whiteLabelWrap
   if(!e.target.checked){["whiteLabelName","wlAddr1","wlAddr2","wlCity","wlState","wlZip"].forEach(id=>{$(id).value="";$(id).classList.remove("bad-field");});}};
 
 /* ---- checkout ---- */
-function shipCost(){return (SHIP_METHODS.find(m=>m.id===state.shipMethod)||SHIP_METHODS[0]).cost;}
+// Mirror of server shippingForZone() — reads the same catalog map, so shown == charged.
+function _isUS(c){const v=String(c==null?"US":c).trim().toLowerCase();return !v||["us","usa","united states","united states of america"].includes(v);}
+function _normState(v){const t=String(v||"").trim().toUpperCase();if(SHIP_REGIONS.states[t])return t;return SHIP_REGIONS.names[t.toLowerCase()]||null;}
+function zoneShip(methodId){
+  const st=$("shipState")?$("shipState").value:"", ctry=$("shipCountry")?$("shipCountry").value:"United States";
+  const exp=methodId==="expedited", free=Number(FREE_SHIP_OVER||0), prints=grandTotal();
+  if(_isUS(ctry)){
+    if(!String(st).trim()) return {unknown:true};
+    if(free>0&&prints>=free&&!exp) return {cost:0,label:"Free shipping",free:true};
+    const norm=_normState(st), key=(norm&&SHIP_REGIONS.states[norm])||SHIP_REGIONS.defaultZone;
+    const z=(SHIP_ZONES||[]).find(x=>x.key===key);
+    if(z){const cost=exp?(z.expedited??z.standard):z.standard;return {cost:+(+cost).toFixed(2),label:z.label+" · "+(exp?"Expedited":"Standard")};}
+  }
+  const m=SHIP_METHODS.find(x=>x.id===methodId)||SHIP_METHODS[0];
+  return {cost:m?m.cost:0,label:m?m.label:""};
+}
+function shipCost(){const r=zoneShip(state.shipMethod);return r.unknown?0:r.cost;}
 function renderCheckout(){
   const sel=$("shipMethod");
-  sel.innerHTML=SHIP_METHODS.map(m=>`<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label} · ${money(m.cost)}</option>`).join("");
+  sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=r.unknown?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
   sel.onchange=e=>{state.shipMethod=e.target.value;renderCheckout();};
+  ["shipState","shipCountry"].forEach(id=>{const el=$(id);if(el&&!el._zoneWired){el._zoneWired=true;el.addEventListener("input",renderCheckout);}});
   $("whiteLabel").checked=state.whiteLabel;$("whiteLabelWrap").classList.toggle("on",state.whiteLabel);
-  const sub=subTotal(), prints=grandTotal(), ship=shipCost(), total=+(prints+ship).toFixed(2), t=volumeTier(), saved=+(sub-prints).toFixed(2);
+  const _r=zoneShip(state.shipMethod), ship=_r.unknown?0:_r.cost, shipCell=_r.unknown?`<span class="muted">enter your state</span>`:_r.free?"Free":money(_r.cost);
+  const sub=subTotal(), prints=grandTotal(), total=+(prints+ship).toFixed(2), t=volumeTier(), saved=+(sub-prints).toFixed(2);
   refreshDpiGates();
   $("coSummary").innerHTML=`
     <div class="row"><span>Prints</span><span>${money(sub)}</span></div>
     ${(t&&t.rate)?`<div class="row saved"><span>Volume discount · ${t.label.toLowerCase()}</span><span>\u2212${money(saved)}</span></div>`:""}
-    <div class="row"><span>Shipping</span><span>${money(ship)}</span></div>
+    <div class="row"><span>Shipping</span><span>${shipCell}</span></div>
     <div class="row"><span>Tax</span><span>calculated from address</span></div>
     <div class="row tot"><span>Total</span><span>${money(total)}</span></div>`;
 }
