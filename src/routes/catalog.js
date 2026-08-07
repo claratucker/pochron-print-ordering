@@ -20,6 +20,7 @@ catalogRouter.get('/', (req, res) => {
     volume: c.volume,
     freeShipOver: c.freeShipOver,
     shipRegions: c.shipRegions,
+    shipCountries: c.shipCountries,
     ccAdd: c.ccAdd,
     dpi: { good: c.dpiGood, min: c.dpiMin },
     pxPerIn: c.pxPerIn,

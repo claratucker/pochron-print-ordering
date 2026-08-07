@@ -207,6 +207,9 @@
   .summary .row{display:flex; justify-content:space-between; align-items:baseline; font-size:13.5px; padding:5px 0; color:var(--ink-soft)}
   .summary .row.tot{border-top:1px solid var(--line); margin-top:6px; padding-top:11px; color:var(--ink); font-family:var(--sans); font-size:22px}
   .summary .row.saved{color:var(--ok)}
+  .dutynote{margin-top:9px;font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--ink-soft)}
+  .gatecell{color:var(--plum)}
+  #placeOrderBtn:disabled{opacity:.45;cursor:not-allowed}
   .bad-field{border-color:var(--bad) !important; background:#fff6f4 !important}
   .studio-intro{font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin:0 0 20px}
   .studio-intro a{color:var(--petrol); text-decoration:underline}
@@ -479,7 +482,7 @@ let PRICES={
 };
 const BORDERS={none:{label:"No border (fills the print)",add:0},border:{label:"White border (fits the whole image)",add:0}};
 let SHIP_METHODS=[{id:"standard",label:"Standard (5–7 business days)",cost:12},{id:"expedited",label:"Expedited (2–3 business days)",cost:28}];
-let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},defaultZone:'se'}; let FREE_SHIP_OVER=0;
+let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},defaultZone:'se'}; let FREE_SHIP_OVER=0; let SHIP_COUNTRIES={};
 // Volume discounts apply to the whole order by total print count (from the pricing sheet).
 let VOLUME=[{min:100,rate:null,label:"Contact us for custom pricing"},{min:50,rate:.20,label:"Save 20%"},{min:25,rate:.15,label:"Save 15%"},{min:10,rate:.10,label:"Save 10%"},{min:1,rate:0,label:"Standard pricing"}];
 let CC_ADD=15; // Pochron Studios by-hand color correction — flat, charged ONCE per image (not per copy)
@@ -516,6 +519,7 @@ async function syncCatalog(){
     if(j.shipping&&j.shipping.length)SHIP_METHODS=j.shipping.map(s=>({id:s.id,label:s.label,cost:s.cost}));
     if(j.shipZones&&j.shipZones.length)SHIP_ZONES=j.shipZones;
     if(j.shipRegions&&j.shipRegions.states)SHIP_REGIONS=j.shipRegions;
+    if(j.shipCountries)SHIP_COUNTRIES=j.shipCountries;
     if(typeof j.freeShipOver==='number')FREE_SHIP_OVER=j.freeShipOver;
     if(j.volume&&j.volume.length)VOLUME=j.volume.slice().sort((a,b)=>b.min-a.min);
     if(j.dpiGood)DPI_GOOD=j.dpiGood;
@@ -1372,6 +1376,11 @@ function zoneShip(methodId){
     const norm=_normState(st), key=(norm&&SHIP_REGIONS.states[norm])||SHIP_REGIONS.defaultZone;
     const z=(SHIP_ZONES||[]).find(x=>x.key===key);
     if(z){const cost=exp?(z.expedited??z.standard):z.standard;return {cost:+(+cost).toFixed(2),label:z.label+" · "+(exp?"Expedited":"Standard")};}
+  } else {
+    const hit=SHIP_COUNTRIES[String(ctry||"").trim().toLowerCase()];
+    const iz=hit&&(SHIP_ZONES||[]).find(x=>x.key===hit.zone);
+    if(iz) return {cost:+(+iz.standard).toFixed(2),label:iz.label,intl:true};
+    return {gate:true,label:"Contact the studio for a shipping quote"};
   }
   const m=SHIP_METHODS.find(x=>x.id===methodId)||SHIP_METHODS[0];
   return {cost:m?m.cost:0,label:m?m.label:""};
@@ -1379,24 +1388,29 @@ function zoneShip(methodId){
 function shipCost(){const r=zoneShip(state.shipMethod);return r.unknown?0:r.cost;}
 function renderCheckout(){
   const sel=$("shipMethod");
-  sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=r.unknown?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
+  sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=(r.unknown||r.gate)?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
   sel.onchange=e=>{state.shipMethod=e.target.value;renderCheckout();};
   ["shipState","shipCountry"].forEach(id=>{const el=$(id);if(el&&!el._zoneWired){el._zoneWired=true;el.addEventListener("input",renderCheckout);}});
   $("whiteLabel").checked=state.whiteLabel;$("whiteLabelWrap").classList.toggle("on",state.whiteLabel);
-  const _r=zoneShip(state.shipMethod), ship=_r.unknown?0:_r.cost, shipCell=_r.unknown?`<span class="muted">enter your state</span>`:_r.free?"Free":money(_r.cost);
+  const _r=zoneShip(state.shipMethod), gated=!!_r.gate, ship=(_r.unknown||gated)?0:_r.cost;
+  const shipCell=gated?`<span class="gatecell">Contact the studio for a quote</span>`:_r.unknown?`<span class="muted">enter your state</span>`:_r.free?"Free":money(_r.cost);
   const sub=subTotal(), prints=grandTotal(), total=+(prints+ship).toFixed(2), t=volumeTier(), saved=+(sub-prints).toFixed(2);
+  const dutiesNote=(_r.intl||gated)?`<div class="dutynote">${gated?"We don't ship to that country through the site yet — contact the studio for a shipping quote.":"International orders: import duties and taxes are the recipient's responsibility."}</div>`:"";
   refreshDpiGates();
+  if(gated&&$("placeOrderBtn")) $("placeOrderBtn").disabled=true;
   $("coSummary").innerHTML=`
     <div class="row"><span>Prints</span><span>${money(sub)}</span></div>
     ${(t&&t.rate)?`<div class="row saved"><span>Volume discount · ${t.label.toLowerCase()}</span><span>\u2212${money(saved)}</span></div>`:""}
     <div class="row"><span>Shipping</span><span>${shipCell}</span></div>
     <div class="row"><span>Tax</span><span>calculated from address</span></div>
-    <div class="row tot"><span>Total</span><span>${money(total)}</span></div>`;
+    <div class="row tot"><span>Total</span><span>${gated?`<span class="muted">quote required</span>`:money(total)}</span></div>
+    ${dutiesNote}`;
 }
 
 /* ---- place order (authorize now, capture on studio approval) ---- */
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 $("placeOrderBtn").onclick=()=>{
+  if(zoneShip(state.shipMethod).gate){$("shipCountry")&&$("shipCountry").classList.add("bad-field");return;}
   const required=[["coName","your name"],["coEmail","your email"],["shipAddr1","a street address"],["shipCity","city"],["shipState","state"],["shipZip","ZIP"]];
   const missing=[];
   required.forEach(([id,lbl])=>{const el=$(id),ok=!!el.value.trim();el.classList.toggle("bad-field",!ok);if(!ok)missing.push(lbl);});

@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { SHIP_REGIONS } from '../catalog-defaults.js';
+import { SHIP_REGIONS, SHIP_COUNTRIES } from '../catalog-defaults.js';
 
 // Reads the editable catalog out of the DB. This is what both the pricing
 // engine and the public GET /api/catalog serve, so the client never hardcodes
@@ -33,5 +33,6 @@ export function loadCatalog() {
     pxPerIn: settings.px_per_in ?? 6.6,
     freeShipOver: settings.free_ship_over ?? 0,
     shipRegions: SHIP_REGIONS,
+    shipCountries: SHIP_COUNTRIES,
   };
 }

@@ -2,7 +2,7 @@
 // This is the real charge. The client total is a display convenience (§7).
 // Every function here mirrors the mockup's math one-to-one so the numbers match.
 
-import { SHIP_REGIONS } from '../catalog-defaults.js';
+import { SHIP_REGIONS, SHIP_COUNTRIES } from '../catalog-defaults.js';
 
 const round2 = (n) => +Number(n).toFixed(2);
 export const dims = (s) => s.split('×').map(Number);
@@ -78,8 +78,14 @@ export function shippingForZone(cat, address, methodId, printsTotal) {
       const cost = exp ? (zone.expedited ?? zone.standard) : zone.standard;
       return { cost: round2(cost), zone: zone.key, label: `${zone.label} \u00b7 ${exp ? 'Expedited' : 'Standard'}`, method: methodId };
     }
+  } else {
+    // International: map country -> zone (charged as the zone price); unmapped -> quote gate.
+    const hit = SHIP_COUNTRIES[String(address?.country || '').trim().toLowerCase()];
+    const zone = hit && (cat.shipZones || []).find((z) => z.key === hit.zone);
+    if (zone) return { cost: round2(zone.standard), zone: zone.key, label: zone.label, method: methodId, intl: true };
+    return { gate: true, cost: 0, zone: 'quote', label: 'Contact the studio for a shipping quote', method: methodId };
   }
-  // Fallback: existing flat method (non-US, or zones unavailable).
+  // Fallback only if US zones are somehow unavailable.
   const m = cat.shipping.find((x) => x.id === methodId) || cat.shipping[0];
   return { cost: m ? m.cost : 0, zone: 'flat', label: m?.label, method: m?.id };
 }
@@ -108,7 +114,7 @@ export function priceOrder(cat, items, files, shipMethodId, address) {
     lines, subtotal, totalQty,
     tier: { min: tier.min, rate: tier.rate, label: tier.label },
     manualQuote, discountRate, discountAmount, printsTotal,
-    shipMethod: ship.method, shippingLabel: ship.label, shippingCost, shipZone: ship.zone,
+    shipMethod: ship.method, shippingLabel: ship.label, shippingCost, shipZone: ship.zone, shipGate: !!ship.gate,
     anyTooSmall,
     // Tax + final total are finished in finalizeTotals() once we have an address.
   };

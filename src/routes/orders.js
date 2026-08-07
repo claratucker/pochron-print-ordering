@@ -187,6 +187,12 @@ ordersRouter.post('/', async (req, res) => {
         code: 'MANUAL_QUOTE', studio: config.email.studioContactUrl,
       });
     }
+    if (q.shipGate) {
+      return res.status(422).json({
+        error: 'We don\'t ship to that destination through the site yet — please contact the studio for a shipping quote.',
+        code: 'SHIP_QUOTE', studio: config.email.studioContactUrl,
+      });
+    }
     taxResult = await tax.quote({ printsTotal: q.printsTotal, shippingCost: q.shippingCost, address: shipping });
     quote = finalizeTotals(q, taxResult.amount);
   } catch (e) {

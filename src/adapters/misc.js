@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { SHIP_COUNTRIES } from '../catalog-defaults.js';
 
 // ── Tax (§7/§8) ─────────────────────────────────────────────────────
 // Drivers: none | flat | stripe
@@ -71,10 +72,12 @@ export const tax = {
 
 // Stripe wants ISO-3166 alpha-2; the checkout may send a full country name.
 function normalizeCountry(c) {
-  const v = String(c || 'US').trim();
+  const v = String(c || 'US').trim().toLowerCase();
+  if (!v || ['us', 'usa', 'united states', 'united states of america'].includes(v)) return 'US';
+  const hit = SHIP_COUNTRIES[v];
+  if (hit) return hit.iso;                 // known international destination -> real ISO (not US)
   if (v.length === 2) return v.toUpperCase();
-  const map = { 'united states': 'US', 'united states of america': 'US', usa: 'US', canada: 'CA' };
-  return map[v.toLowerCase()] || 'US';
+  return String(c).trim().slice(0, 2).toUpperCase();  // best effort; never silently 'US'
 }
 
 // ── Virus / malware scan (§4/§13) ───────────────────────────────────
