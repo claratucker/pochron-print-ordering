@@ -32,10 +32,11 @@ describe('quotes', () => {
     const { json } = await app.api('/api/price/quote', { method: 'POST', body: {
       items: [{ fileId: file.fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 1, colorPath: 'none' }],
       shipMethod: 'standard',
+      address: { state: 'NY', zip: '11215', country: 'US' },
     }});
     expect(json.subtotal).toBe(7.95);
-    expect(json.shippingCost).toBe(12);
-    expect(json.total).toBe(19.95);
+    expect(json.shippingCost).toBe(15);   // NY -> Northeast zone
+    expect(json.total).toBe(22.95);
   });
 
   it('charges hand colour correction once per image, not per copy', async () => {
@@ -51,10 +52,11 @@ describe('quotes', () => {
     const { json } = await app.api('/api/price/quote', { method: 'POST', body: {
       items: [{ fileId: file.fileId, paper: 'pg-baryta', size: '8×10', border: 'none', qty: 10, colorPath: 'none' }],
       shipMethod: 'standard',
+      address: { state: 'NY', zip: '11215', country: 'US' },
     }});
     expect(json.subtotal).toBe(79.50);
     expect(json.discountRate).toBe(0.10);
-    expect(json.total).toBe(+(79.50 * 0.9 + 12).toFixed(2));
+    expect(json.total).toBe(+(79.50 * 0.9 + 15).toFixed(2));   // + NY Northeast shipping
   });
 
   it('routes 100+ prints to a manual quote rather than guessing a price', async () => {
@@ -69,7 +71,7 @@ describe('quotes', () => {
     const res = await app.api('/api/orders', { method: 'POST',
       body: app.orderBody(file.fileId, { total: 0.01, subtotal: 0.01 }) });
     expect(res.status).toBe(201);
-    expect(res.json.total).toBe(19.95);   // server price, not the client's
+    expect(res.json.total).toBe(22.95);   // server price (7.95 + NY $15 shipping), not the client's
   });
 
   it('rejects an unknown paper or size', async () => {

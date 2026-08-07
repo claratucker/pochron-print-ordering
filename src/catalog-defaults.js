@@ -123,7 +123,8 @@ export const SHIP_COUNTRIES = {
 };
 
 export const SHIP_REGIONS = {
-  defaultZone: 'se',
+  // ZIP3 prefix ranges -> zone, used only when the free-text state doesn't resolve.
+  zip3: [[6,9,'akhi'],[10,289,'ne'],[290,427,'se'],[430,459,'ne'],[460,567,'se'],[570,599,'pm'],[600,658,'se'],[660,693,'pm'],[700,888,'pm'],[889,961,'wc'],[967,969,'akhi'],[970,994,'wc'],[995,999,'akhi']],
   states: { NY:'ne', NJ:'ne', CT:'ne', RI:'ne', MA:'ne', NH:'ne', VT:'ne', ME:'ne', PA:'ne', DE:'ne', MD:'ne', DC:'ne', VA:'ne', WV:'ne', OH:'ne', NC:'ne', SC:'se', GA:'se', FL:'se', AL:'se', MS:'se', TN:'se', KY:'se', IN:'se', MI:'se', IL:'se', WI:'se', MN:'se', IA:'se', MO:'se', AR:'pm', LA:'pm', TX:'pm', OK:'pm', KS:'pm', NE:'pm', SD:'pm', ND:'pm', CO:'pm', WY:'pm', MT:'pm', NM:'pm', ID:'pm', UT:'pm', AZ:'pm', NV:'wc', CA:'wc', OR:'wc', WA:'wc', AK:'akhi', HI:'akhi', PR:'akhi', VI:'akhi', GU:'akhi', AS:'akhi', MP:'akhi' },
   names: { 'alabama':'AL', 'alaska':'AK', 'arizona':'AZ', 'arkansas':'AR', 'california':'CA', 'colorado':'CO', 'connecticut':'CT', 'delaware':'DE', 'district of columbia':'DC', 'florida':'FL', 'georgia':'GA', 'hawaii':'HI', 'idaho':'ID', 'illinois':'IL', 'indiana':'IN', 'iowa':'IA', 'kansas':'KS', 'kentucky':'KY', 'louisiana':'LA', 'maine':'ME', 'maryland':'MD', 'massachusetts':'MA', 'michigan':'MI', 'minnesota':'MN', 'mississippi':'MS', 'missouri':'MO', 'montana':'MT', 'nebraska':'NE', 'nevada':'NV', 'new hampshire':'NH', 'new jersey':'NJ', 'new mexico':'NM', 'new york':'NY', 'north carolina':'NC', 'north dakota':'ND', 'ohio':'OH', 'oklahoma':'OK', 'oregon':'OR', 'pennsylvania':'PA', 'rhode island':'RI', 'south carolina':'SC', 'south dakota':'SD', 'tennessee':'TN', 'texas':'TX', 'utah':'UT', 'vermont':'VT', 'virginia':'VA', 'washington':'WA', 'west virginia':'WV', 'wisconsin':'WI', 'wyoming':'WY', 'puerto rico':'PR' },
 };

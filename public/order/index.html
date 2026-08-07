@@ -482,7 +482,7 @@ let PRICES={
 };
 const BORDERS={none:{label:"No border (fills the print)",add:0},border:{label:"White border (fits the whole image)",add:0}};
 let SHIP_METHODS=[{id:"standard",label:"Standard (5–7 business days)",cost:12},{id:"expedited",label:"Expedited (2–3 business days)",cost:28}];
-let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},defaultZone:'se'}; let FREE_SHIP_OVER=0; let SHIP_COUNTRIES={};
+let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},zip3:[]}; let FREE_SHIP_OVER=0; let SHIP_COUNTRIES={};
 // Volume discounts apply to the whole order by total print count (from the pricing sheet).
 let VOLUME=[{min:100,rate:null,label:"Contact us for custom pricing"},{min:50,rate:.20,label:"Save 20%"},{min:25,rate:.15,label:"Save 15%"},{min:10,rate:.10,label:"Save 10%"},{min:1,rate:0,label:"Standard pricing"}];
 let CC_ADD=15; // Pochron Studios by-hand color correction — flat, charged ONCE per image (not per copy)
@@ -1367,15 +1367,19 @@ $("whiteLabel").onchange=e=>{state.whiteLabel=e.target.checked;$("whiteLabelWrap
 // Mirror of server shippingForZone() — reads the same catalog map, so shown == charged.
 function _isUS(c){const v=String(c==null?"US":c).trim().toLowerCase();return !v||["us","usa","united states","united states of america"].includes(v);}
 function _normState(v){const t=String(v||"").trim().toUpperCase();if(SHIP_REGIONS.states[t])return t;return SHIP_REGIONS.names[t.toLowerCase()]||null;}
+function _zipZone(zip){const d=String(zip||"").replace(/\D/g,"");if(d.length<3)return null;const z3=parseInt(d.slice(0,3),10);for(const r of (SHIP_REGIONS.zip3||[]))if(z3>=r[0]&&z3<=r[1])return r[2];return null;}
 function zoneShip(methodId){
   const st=$("shipState")?$("shipState").value:"", ctry=$("shipCountry")?$("shipCountry").value:"United States";
   const exp=methodId==="expedited", free=Number(FREE_SHIP_OVER||0), prints=grandTotal();
   if(_isUS(ctry)){
-    if(!String(st).trim()) return {unknown:true};
+    const zip=$("shipZip")?$("shipZip").value:"", zipDigits=String(zip).replace(/\D/g,"");
+    if(!String(st).trim() && zipDigits.length<3) return {unknown:true};
     if(free>0&&prints>=free&&!exp) return {cost:0,label:"Free shipping",free:true};
-    const norm=_normState(st), key=(norm&&SHIP_REGIONS.states[norm])||SHIP_REGIONS.defaultZone;
+    const norm=_normState(st), key=(norm&&SHIP_REGIONS.states[norm])||_zipZone(zip);
+    if(!key) return zipDigits.length>=3 ? {gate:true,label:"Contact the studio for a shipping quote"} : {unknown:true};
     const z=(SHIP_ZONES||[]).find(x=>x.key===key);
     if(z){const cost=exp?(z.expedited??z.standard):z.standard;return {cost:+(+cost).toFixed(2),label:z.label+" · "+(exp?"Expedited":"Standard")};}
+    return {gate:true,label:"Contact the studio for a shipping quote"};
   } else {
     const hit=SHIP_COUNTRIES[String(ctry||"").trim().toLowerCase()];
     const iz=hit&&(SHIP_ZONES||[]).find(x=>x.key===hit.zone);
@@ -1390,7 +1394,7 @@ function renderCheckout(){
   const sel=$("shipMethod");
   sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=(r.unknown||r.gate)?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
   sel.onchange=e=>{state.shipMethod=e.target.value;renderCheckout();};
-  ["shipState","shipCountry"].forEach(id=>{const el=$(id);if(el&&!el._zoneWired){el._zoneWired=true;el.addEventListener("input",renderCheckout);}});
+  ["shipState","shipZip","shipCountry"].forEach(id=>{const el=$(id);if(el&&!el._zoneWired){el._zoneWired=true;el.addEventListener("input",renderCheckout);}});
   $("whiteLabel").checked=state.whiteLabel;$("whiteLabelWrap").classList.toggle("on",state.whiteLabel);
   const _r=zoneShip(state.shipMethod), gated=!!_r.gate, ship=(_r.unknown||gated)?0:_r.cost;
   const shipCell=gated?`<span class="gatecell">Contact the studio for a quote</span>`:_r.unknown?`<span class="muted">enter your state</span>`:_r.free?"Free":money(_r.cost);

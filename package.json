@@ -1,6 +1,6 @@
 {
   "name": "pochron-print-ordering-backend",
-  "version": "5.8.1",
+  "version": "5.9.2",
   "description": "Phase 1 backend for Pochron Studios online print ordering. Serves the photo-upload mockup: server-authoritative pricing, direct-to-cloud uploads, order + proofing lifecycle, Stripe auth/capture seams, transactional email, admin pricing page.",
   "type": "module",
   "main": "src/server.js",

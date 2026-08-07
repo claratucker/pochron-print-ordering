@@ -63,6 +63,15 @@ function isUS(country) {
   const c = String(country ?? 'US').trim().toLowerCase();
   return !c || ['us', 'usa', 'united states', 'united states of america'].includes(c);
 }
+// ZIP3 prefix -> zone (fallback when the state field doesn't resolve). Requires
+// at least 3 digits so a partial ZIP can't match prematurely.
+function zoneFromZip(zip) {
+  const d = String(zip || '').replace(/\D/g, '');
+  if (d.length < 3) return null;
+  const z3 = parseInt(d.slice(0, 3), 10);
+  for (const [lo, hi, zone] of (SHIP_REGIONS.zip3 || [])) if (z3 >= lo && z3 <= hi) return zone;
+  return null;
+}
 // Returns { cost, zone, label, method }. printsTotal is the discounted goods total,
 // used for the free-shipping threshold.
 export function shippingForZone(cat, address, methodId, printsTotal) {
@@ -72,12 +81,14 @@ export function shippingForZone(cat, address, methodId, printsTotal) {
     // Free shipping applies to domestic STANDARD only (never expedited, never international).
     if (free > 0 && printsTotal >= free && !exp) return { cost: 0, zone: 'free', label: 'Free shipping', method: methodId };
     const st = normalizeState(address?.state);
-    const zoneKey = (st && SHIP_REGIONS.states[st]) || SHIP_REGIONS.defaultZone;
-    const zone = (cat.shipZones || []).find((z) => z.key === zoneKey);
+    const zoneKey = (st && SHIP_REGIONS.states[st]) || zoneFromZip(address?.zip);   // state, then ZIP; never a middle default
+    const zone = zoneKey && (cat.shipZones || []).find((z) => z.key === zoneKey);
     if (zone) {
       const cost = exp ? (zone.expedited ?? zone.standard) : zone.standard;
       return { cost: round2(cost), zone: zone.key, label: `${zone.label} \u00b7 ${exp ? 'Expedited' : 'Standard'}`, method: methodId };
     }
+    // US but neither state nor ZIP resolves -> fail closed to a quote, never a middle tier.
+    return { gate: true, cost: 0, zone: 'quote', label: 'Contact the studio for a shipping quote', method: methodId };
   } else {
     // International: map country -> zone (charged as the zone price); unmapped -> quote gate.
     const hit = SHIP_COUNTRIES[String(address?.country || '').trim().toLowerCase()];
@@ -125,6 +136,26 @@ export function finalizeTotals(quote, tax) {
   const taxAmount = round2(tax || 0);
   const total = round2(quote.printsTotal + quote.shippingCost + taxAmount);
   return { ...quote, tax: taxAmount, total };
+}
+
+
+// Amount to capture at approval. Full approval captures the order total, minus an
+// optional DOWN-ONLY reduction to shipping (Julie entering the real postage on an
+// international order — she can never capture above the authorized total). Partial
+// approval captures just the approved line totals; shipping settles on full approval.
+export function captureAmountFor({ total, shippingCost, items }, { itemIds, actualShipping } = {}) {
+  const approving = itemIds?.length ? items.filter((i) => itemIds.includes(i.id)) : items;
+  const partial = !!(itemIds?.length && approving.length < items.length);
+  if (partial) {
+    return { amount: round2(approving.reduce((s, i) => s + i.line_total, 0)), partial: true, adjustedShipping: null };
+  }
+  let amount = total, adjustedShipping = null;
+  if (actualShipping != null && shippingCost != null) {
+    const capped = Math.min(Math.max(0, actualShipping), shippingCost);   // down-only, never below 0
+    amount = round2(total - (shippingCost - capped));
+    adjustedShipping = round2(capped);
+  }
+  return { amount: round2(amount), partial: false, adjustedShipping };
 }
 
 export class PriceError extends Error {}

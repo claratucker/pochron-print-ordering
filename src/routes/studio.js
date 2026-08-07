@@ -7,6 +7,7 @@ import { requireStudio } from '../lib/auth.js';
 import { payment } from '../adapters/payment.js';
 import { emails } from '../adapters/email.js';
 import { getOrder, transition, addMessage } from '../lib/orders.js';
+import { captureAmountFor } from '../lib/pricing.js';
 import { storage } from '../adapters/storage.js';
 import { renderRecipe, recipeIsNoop } from '../lib/render.js';
 
@@ -82,7 +83,7 @@ studioRouter.get('/queue', async (req, res) => {
         [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_zip ? ' ' + o.ship_zip : ''),
         o.ship_country && !/^(us|usa|united states)$/i.test(String(o.ship_country).trim()) ? o.ship_country : null,
       ].filter((line) => line && line.trim()).join('\n'),
-      whiteLabel: !!o.white_label, total: o.total, createdAt: o.created_at,
+      whiteLabel: !!o.white_label, total: o.total, shippingCost: o.shipping_cost, createdAt: o.created_at,
       paymentStatus: o.payment_status || null,
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
@@ -163,25 +164,24 @@ studioRouter.get('/orders/:id', (req, res) => {
 // POST /api/studio/orders/:id/approve — approve & print → CAPTURE payment (§9).
 // Optional body { itemIds: [...] } approves only some photos and captures a
 // partial amount; the rest stay held.
-const ApproveSchema = z.object({ itemIds: z.array(z.number()).optional() });
+const ApproveSchema = z.object({ itemIds: z.array(z.number()).optional(), actualShipping: z.number().nonnegative().optional() });
 studioRouter.post('/orders/:id/approve', async (req, res) => {
   const order = getOrder(+req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   const ap = ApproveSchema.safeParse(req.body || {});
   if (!ap.success) return res.status(400).json({ error: 'Invalid approval request.', details: ap.error.flatten() });
-  const { itemIds } = ap.data;
+  const { itemIds, actualShipping } = ap.data;
 
   const approving = itemIds?.length ? order.items.filter((i) => itemIds.includes(i.id)) : order.items;
   if (!approving.length) return res.status(400).json({ error: 'No matching items to approve.' });
 
-  const partial = itemIds?.length && approving.length < order.items.length;
-  // Amount to capture: sum of approved line totals + a proportional share of
-  // shipping/tax on full approval. On partials we capture just the print lines
-  // and settle shipping/tax when the order fully approves.
-  const lineSum = approving.reduce((s, i) => s + i.line_total, 0);
-  const captureAmount = partial
-    ? +lineSum.toFixed(2)
-    : order.total;
+  // Amount to capture: approved line totals on partials; on full approval the
+  // order total, minus any down-only shipping correction Julie enters (the real
+  // international postage). captureAmountFor keeps this testable.
+  const { amount: captureAmount, partial, adjustedShipping } = captureAmountFor(
+    { total: order.total, shippingCost: order.shipping_cost, items: order.items },
+    { itemIds, actualShipping },
+  );
 
   // A lapsed authorization cannot be captured. Say so plainly and point at the
   // fix, rather than letting Stripe return an opaque error.
@@ -209,7 +209,7 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
 
   let cap;
   try {
-    cap = await payment.capture({ paymentRef: order.payment_ref, amount: partial ? captureAmount : undefined });
+    cap = await payment.capture({ paymentRef: order.payment_ref, amount: (partial || adjustedShipping != null) ? captureAmount : undefined });
   } catch (e) {
     return res.status(402).json({ error: 'Capture failed. The authorization may have expired — re-authorize the customer.', detail: e.message, code: 'CAPTURE_FAILED' });
   }
@@ -220,8 +220,9 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
         .run(+(i.line_total).toFixed(2), i.id));
     const remaining = db.prepare(`SELECT COUNT(*) c FROM order_items WHERE order_id=? AND item_status!='approved'`).get(order.id).c;
     if (remaining === 0) {
+      if (adjustedShipping != null) db.prepare(`UPDATE orders SET shipping_cost=?, total=? WHERE id=?`).run(adjustedShipping, captureAmount, order.id);
       db.prepare(`UPDATE orders SET payment_status='captured', updated_at=datetime('now') WHERE id=?`).run(order.id);
-      transition(order.id, 'approved', `Approved; captured ${cap.capturedAmount ?? order.total}`);
+      transition(order.id, 'approved', `Approved; captured ${cap.capturedAmount ?? captureAmount}${adjustedShipping != null ? ` (shipping set to $${adjustedShipping})` : ''}`);
       db.prepare(`UPDATE orders SET status='in_production' WHERE id=?`).run(order.id);
     } else {
       db.prepare(`UPDATE orders SET payment_status='partially_captured' WHERE id=?`).run(order.id);
@@ -239,7 +240,7 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
   }
 
   const fresh = getOrder(order.id);
-  try { if (fresh.status === 'in_production' || fresh.status === 'approved') await emails.approved(fresh, cap.capturedAmount ?? order.total); }
+  try { if (fresh.status === 'in_production' || fresh.status === 'approved') await emails.approved(fresh, cap.capturedAmount ?? captureAmount); }
   catch (e) { console.error('Approved email failed:', e.message); }
 
   res.json({ ref: order.ref, status: getOrder(order.id).status, captured: cap.capturedAmount ?? captureAmount, partial, printFiles: rendered });

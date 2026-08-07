@@ -29,7 +29,7 @@ describe('pricing admin', () => {
   it('a changed price is what the customer is actually charged', async () => {
     const f = await app.uploadImage('admin.png', 3000, 2400);
     const res = await app.api('/api/orders', { method: 'POST', body: app.orderBody(f.fileId) });
-    expect(res.json.total).toBe(24.50);    // 12.50 (edited) + 12 shipping
+    expect(res.json.total).toBe(27.50);    // 12.50 (edited) + 15 NY (Northeast) shipping
   });
 
   it('the colour-correction fee is editable', async () => {

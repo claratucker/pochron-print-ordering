@@ -398,6 +398,7 @@ function actionsBlock(o){
   <div class="actions">
     <button class="approve">Approve &amp; print</button>
     <span class="amt-hint" data-hint></span>
+    ${o.shippingCost > 0 ? `<div class="shipadj" style="margin:8px 0;font-size:13px"><label>Shipping charged $<input class="actship" type="number" min="0" step="0.01" max="${o.shippingCost}" value="${o.shippingCost}" style="width:80px"></label> <span class="note" style="display:inline">Lower to the real postage (e.g. international); only reduces.</span></div>` : ''}
     <div class="holdbox">
       <textarea class="holdmsg" placeholder="Message the customer (e.g. ask for a higher-res file), then place the order on hold…"></textarea>
       <div class="holdrow"><button class="ghost hold">Hold &amp; message</button></div>
@@ -433,15 +434,19 @@ function wireOrder(o){
   const selected = () => picks().filter(p=>p.checked).map(p=>+p.dataset.item);
   const hint = el.querySelector('[data-hint]');
 
+  const actship = el.querySelector('.actship');
+  const actualShipping = () => actship ? Math.min(Math.max(0, parseFloat(actship.value)||0), o.shippingCost||0) : (o.shippingCost||0);
+  const fullTotal = () => +(o.total - ((o.shippingCost||0) - actualShipping())).toFixed(2);
   function refreshHint(){
     if(!hint) return;
     const ids = selected();
     const all = ids.length === o.items.length;
     const sum = o.items.filter(i=>ids.includes(i.id)).reduce((s,i)=>s+i.lineTotal,0);
     if(!ids.length){ hint.textContent='select at least one photo'; return; }
-    hint.textContent = all ? `captures ${money(o.total)} (incl. shipping)` : `partial: captures ${money(sum)}`;
+    hint.textContent = all ? `captures ${money(fullTotal())} (incl. shipping)` : `partial: captures ${money(sum)}`;
   }
   picks().forEach(p => p.addEventListener('change', refreshHint));
+  if(actship) actship.addEventListener('input', refreshHint);
   refreshHint();
 
   const approveBtn = el.querySelector('.approve');
@@ -449,12 +454,12 @@ function wireOrder(o){
     const ids = selected();
     if(!ids.length) return toast('Select at least one photo to approve.');
     const all = ids.length === o.items.length;
-    const amt = all ? o.total : o.items.filter(i=>ids.includes(i.id)).reduce((s,i)=>s+i.lineTotal,0);
+    const amt = all ? fullTotal() : o.items.filter(i=>ids.includes(i.id)).reduce((s,i)=>s+i.lineTotal,0);
     if(!confirm(`Approve ${all?'all photos':ids.length+' photo(s)'} in ${o.ref} and capture ${money(amt)}?`)) return;
     approveBtn.disabled = true;
     try {
       const r = await api(`/api/studio/orders/${o.id}/approve`, {
-        method:'POST', body: JSON.stringify(all ? {} : { itemIds: ids }),
+        method:'POST', body: JSON.stringify(all ? { actualShipping: actualShipping() } : { itemIds: ids }),
       });
       toast(`${o.ref}: captured ${money(r.captured)}${r.partial?' (partial)':''} → ${statusLabel(r.status)}`);
       load();
