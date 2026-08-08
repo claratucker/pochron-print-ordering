@@ -87,6 +87,17 @@
   .cfg .qtybox input{width:52px}
   .cfg .rowfoot{grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding-top:9px; margin-top:2px}
   .cfg .paperdesc{grid-column:1/-1; font-size:11.5px; color:var(--ink-soft); line-height:1.45}
+  /* paper picker cards */
+  .cfg .paper-field{grid-column:1/-1}
+  .cfg .papergrid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  @media(max-width:520px){ .cfg .papergrid{grid-template-columns:1fr} }
+  .paperopt{position:relative; text-align:left; display:flex; flex-direction:column; gap:1px; border:1px solid var(--line); background:var(--paper); border-radius:3px; padding:9px 10px 10px; cursor:pointer; font:inherit; color:var(--ink)}
+  .paperopt:hover{border-color:var(--petrol-soft)}
+  .paperopt.sel{border-color:var(--petrol); box-shadow:0 0 0 1px var(--petrol); background:#F5F1FB}
+  .paperopt .pfam{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft)}
+  .paperopt .pname{font-size:13px; font-weight:600; color:var(--ink); line-height:1.2}
+  .paperopt .pshort{font-size:11px; color:var(--ink-soft); line-height:1.35; margin-top:3px}
+  .paperopt .pbadge{position:absolute; top:8px; right:8px; font-family:var(--mono); font-size:8.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--petrol); background:#EDE7F6; border:1px solid var(--petrol-soft); border-radius:2px; padding:1px 5px}
   .archnote{font-size:13.5px; color:var(--ink); line-height:1.6; background:#F1ECF8; border:1px solid var(--line); border-radius:5px; padding:16px 18px; margin:4px 0 18px}
   .prep{margin-top:10px}
   .prep summary{font-family:var(--mono); font-size:11px; color:var(--petrol); cursor:pointer}
@@ -303,7 +314,7 @@
       <h2 class="step-h">Upload Photos</h2>
       <p class="step-sub">Upload up to 12 images. Every file is reviewed before printing. We'll flag anything too small for the size you choose.</p>
       <div class="sources" id="sources">
-        <button class="src" data-src="upload" aria-pressed="true">Upload</button>
+        <button class="src" data-src="upload" aria-pressed="true">This Device</button>
         <!-- Connector buttons are rendered from /api/uploads/sources so the page
              can never offer a source that isn't enabled and configured. -->
       </div>
@@ -491,6 +502,13 @@ const PAPER_DESC={
   "cp-matte":"A true photographic print on Fuji Crystal Archive paper with a glare-free matte surface. It keeps its color for decades.",
   "pg-cotton":"Pigment inks on 100% cotton rag paper. A soft, painterly matte surface that fine-art photographers favor. It holds its detail and color for generations.",
   "pg-baryta":"Pigment inks on a baryta fine-art paper. It has the depth and subtle sheen of a classic darkroom print. It holds rich color for generations. Pochron Studios recommends it for most images."
+};
+/* One-line descriptors for the paper picker cards (full copy stays in PAPER_DESC). */
+const PAPER_SHORT={
+  "cp-glossy":"Rich, saturated color and deep blacks with a bright glossy sheen.",
+  "cp-matte":"The same true photographic color, on a glare-free matte surface.",
+  "pg-cotton":"A soft, painterly matte on 100% cotton rag. A fine-art favorite.",
+  "pg-baryta":"The depth and subtle sheen of a classic darkroom print."
 };
 const dims=s=>s.split("×").map(Number);
 const money=n=>"$"+Number(n).toFixed(2);
@@ -864,7 +882,7 @@ function onSourceClick(b){
   const id=b.dataset.src, up=id==="upload";
   $("uploadArea").classList.toggle("hidden",!up);
   $("connectArea").classList.toggle("hidden",up);
-  if(up)return;
+  if(up){ const fi=$("fileInput"); if(fi) fi.click(); return; }
   if(id==="dropbox")return openDropbox(b);
   if(id==="google_drive")return openGoogleDrive();
   if(id==="lightroom")return openLightroom();
@@ -1196,7 +1214,7 @@ function renderCfg(){
     return `<div class="cfg" data-id="${p.id}" aria-selected="${state.activeId==p.id}">
       <img class="th" src="${p.url}" data-id="${p.id}">
       <div class="fields">
-        <div class="field"><label>Paper</label><select data-f="paper" data-id="${p.id}">${PAPERS.map(pp=>`<option value="${pp.id}" ${pp.id===p.paper?"selected":""}>${pp.label}</option>`).join("")}</select></div>
+        <div class="field paper-field"><label>Paper</label><div class="papergrid">${PAPERS.map(pp=>{const parts=pp.label.split(" · ");const fam=parts[0];const nm=(parts.slice(1).join(" · ")||fam).replace(/\s*\(Recommended\)\s*/,"");const rec=/Recommended/.test(pp.label);const sel=pp.id===p.paper;return `<button type="button" class="paperopt${sel?" sel":""}" data-paper="${pp.id}" data-id="${p.id}" aria-pressed="${sel}">${rec?'<span class="pbadge">Recommended</span>':''}<span class="pfam">${fam}</span><span class="pname">${nm}</span><span class="pshort">${PAPER_SHORT[pp.id]||""}</span></button>`;}).join("")}</div></div>
         <div class="field"><label>Size (in)</label><select data-f="size" data-id="${p.id}">${SIZES.map(s=>`<option value="${s}" ${s===p.size?"selected":""}>${s}${fitsAspect(p,s)?" · matches your photo's shape":""}</option>`).join("")}</select></div>
         <div class="field"><label>Qty</label><input type="number" min="1" value="${p.qty}" data-f="qty" data-id="${p.id}"></div>
         <div class="field" style="justify-content:flex-end">${warn}</div>
@@ -1207,6 +1225,8 @@ function renderCfg(){
   $("cfgList").querySelectorAll("select,input").forEach(el=>el.onchange=()=>{
     const p=state.photos.find(x=>x.id==el.dataset.id);let v=el.value;if(el.dataset.f==="qty")v=Math.max(1,+v||1);
 p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
+  $("cfgList").querySelectorAll(".paperopt").forEach(el=>el.onclick=()=>{
+    const p=state.photos.find(x=>x.id==el.dataset.id);p.paper=el.dataset.paper;renderCfg();renderPreview2();updateTotals();});
   $("cfgList").querySelectorAll(".th,.cfg").forEach(el=>el.onclick=e=>{if(e.target.closest("select,input,button"))return;state.activeId=el.dataset.id;renderCfg();renderPreview2();});
   $("cfgList").querySelectorAll(".rm2").forEach(b=>b.onclick=()=>{state.photos=state.photos.filter(x=>x.id!=b.dataset.id);state.activeId=state.photos[0]?.id||null;renderCfg();renderPreview2();updateTotals();});
   updateTotals();
@@ -1348,10 +1368,14 @@ function makeDraggable(img,p){let d=false;
 }
 
 /* ---- nav ---- */
-function goStep(n){state.step=n;[1,2,3,4].forEach(i=>$("panel"+i).classList.toggle("hidden",i!==n));
+function goStep(n,fromHistory){state.step=n;[1,2,3,4].forEach(i=>$("panel"+i).classList.toggle("hidden",i!==n));
   const mh=$("masthead");if(mh)mh.style.display=n===1?"":"none";
   $("stepper").querySelectorAll("button").forEach(b=>b.setAttribute("aria-current",+b.dataset.step===n));
-  if(n===2){renderCfg();renderPreview2();}if(n===3)renderCrops();if(n===4)renderCheckout();window.scrollTo({top:0,behavior:"smooth"});}
+  if(n===2){renderCfg();renderPreview2();}if(n===3)renderCrops();if(n===4)renderCheckout();window.scrollTo({top:0,behavior:"smooth"});
+  /* Browser back/forward arrows step through the flow; popstate replays without re-pushing. */
+  if(!fromHistory){try{history.pushState({pochStep:n},"");}catch(e){}}}
+window.addEventListener("popstate",e=>{const n=(e.state&&e.state.pochStep)||1;goStep(state.photos.length?n:1,true);});
+try{history.replaceState({pochStep:1},"");}catch(e){}
 $("toStep2").onclick=()=>goStep(2);$("backTo1").onclick=()=>goStep(1);
 $("toStep3").onclick=()=>goStep(3);$("backTo2").onclick=()=>goStep(2);
 $("toStep4").onclick=()=>goStep(4);$("backTo3").onclick=()=>goStep(3);
