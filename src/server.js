@@ -103,6 +103,9 @@ app.use('/studio', express.static(join(__dirname, '..', 'public', 'studio')));
 // Admin pricing page (static; calls /api/admin with the admin password).
 app.use('/admin', express.static(join(__dirname, '..', 'public', 'admin')));
 
+// Everything else in public/ (privacy, terms, share image, favicons) as static files.
+app.use(express.static(join(__dirname, '..', 'public')));
+
 // 404 + error handler
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
