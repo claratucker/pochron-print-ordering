@@ -174,7 +174,7 @@
   /* White-border mode shows the WHOLE image (contain, not cover), centered, on a
      print-shaped frame; the 1/4" inset guarantees a symmetric minimum border and any
      leftover white from the aspect difference spills evenly. Nothing to pan -> no grab. */
-  .cropframe.bordered img{object-fit:contain; object-position:50% 50%; cursor:default}
+  .cropframe.bordered img{width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; object-position:50% 50%; cursor:default}
   .previewcol{background:var(--surround); background-image:var(--surround-grad); padding:14px; border-radius:3px}
   .previewcol .cropframe{border-color:rgba(0,0,0,.18)}
   /* The caption sits on the dark surround, so it needs a light value to stay
