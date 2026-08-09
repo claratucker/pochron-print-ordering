@@ -170,11 +170,11 @@
   .bordernote{font-family:var(--mono); font-size:10px; line-height:1.5; color:var(--plum); margin-top:5px; max-width:40ch}
     /* The white paper needs no outline — it reads on its own against the darker
      surround, the way a print does against a gallery wall. */
-  .cropframe.bordered{background:#fff; border-color:transparent; display:flex; align-items:center; justify-content:center}
+  .cropframe.bordered{background:#fff; border-color:transparent}
   /* White-border mode shows the WHOLE image (contain, not cover), centered, on a
      print-shaped frame; the 1/4" inset guarantees a symmetric minimum border and any
      leftover white from the aspect difference spills evenly. Nothing to pan -> no grab. */
-  .cropframe.bordered img{width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; object-position:50% 50%; cursor:default}
+  .cropframe.bordered img{position:absolute; width:auto; height:auto; object-fit:contain; object-position:50% 50%; cursor:default}
   .previewcol{background:var(--surround); background-image:var(--surround-grad); padding:14px; border-radius:3px}
   .previewcol .cropframe{border-color:rgba(0,0,0,.18)}
   /* The caption sits on the dark surround, so it needs a light value to stay
@@ -1252,7 +1252,7 @@ p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
 /* Bordered frame carries the print's aspect ratio, so CSS % padding (resolved
    against WIDTH) yields the same absolute inset on all four sides. Referencing the
    frame's width in inches makes that a true 1/4" in either orientation. Floored at 1%. */
-function borderPct(p){return 6;} // white mat = 6% of the frame width, so it reads the same thickness in every orientation. Bump for a wider mat. Julie sets the true border. // even white mat = MAT% of the print's shorter side, scales with size on any orientation. Julie sets the true border.
+function borderPct(p){return 8;} // white mat = 8% of the print width, drawn as an even inset (not padding) so it renders right on iOS Safari <26.4. Bump for a wider mat. Julie sets the true border.
 const RULER_GUT=28;                 // px reserved on the top & left edges for tick marks + labels
 const RULER_AVAIL_H=300;            // target print height in the stage; width comes from the stage
 function renderPreview2(){
@@ -1315,10 +1315,12 @@ function renderCrops(){
     // Bordered preview takes the shape of the actual print so the white margin the
     // customer sees is the real margin; fill mode keeps the square repositioning frame.
     const[pw,ph]=orientedDims(p);
-    const frameStyle=` style="aspect-ratio:${pw}/${ph}${bord?`;padding:${borderPct(p)}%`:''}"`;
+    const mat=borderPct(p);
+    const matSty=bord?`position:absolute;left:${mat}%;right:${mat}%;top:${(mat*pw/ph).toFixed(2)}%;bottom:${(mat*pw/ph).toFixed(2)}%;`:'';
+    const frameStyle=` style="aspect-ratio:${pw}/${ph}"`;
     return `<div class="crop">
       <div class="previewcol">
-        <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${frameStyle}><img src="${previewSrc}" style="object-position:${bord?'50% 50%':`${p.posX}% ${p.posY}%`};${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
+        <div class="cropframe${bord?' bordered':''}" data-id="${p.id}"${frameStyle}><img src="${previewSrc}" style="object-position:${bord?'50% 50%':`${p.posX}% ${p.posY}%`};${matSty}${fstyle}" data-id="${p.id}"><div class="tint" style="background:${tint}"></div>${bord?'':'<div class="thirds"></div>'}</div>
         <div class="draghint">${useBaked?'your edit · ':''}${bord?'white border · your whole image fits':'drag to reposition · fills the print'} · ${p.size} in · <span class="badge ${cls}"><span class="dot ${cls}"></span>${dpi} dpi · ${lab}</span></div>
         ${bord?'<div class="bordernote">Preview border is approximate. Pochron Studios sets the final border to fit your whole image at your chosen size.</div>':''}
         <div class="presentation">
