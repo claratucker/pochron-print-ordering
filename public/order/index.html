@@ -1252,7 +1252,7 @@ p[el.dataset.f]=v;renderCfg();renderPreview2();updateTotals();});
 /* Bordered frame carries the print's aspect ratio, so CSS % padding (resolved
    against WIDTH) yields the same absolute inset on all four sides. Referencing the
    frame's width in inches makes that a true 1/4" in either orientation. Floored at 1%. */
-function borderPct(p){const[pw,ph]=orientedDims(p);const MAT=6;return +(MAT*Math.min(pw,ph)/pw).toFixed(2);} // even white mat = MAT% of the print's shorter side, scales with size on any orientation. Julie sets the true border.
+function borderPct(p){return 6;} // white mat = 6% of the frame width, so it reads the same thickness in every orientation. Bump for a wider mat. Julie sets the true border. // even white mat = MAT% of the print's shorter side, scales with size on any orientation. Julie sets the true border.
 const RULER_GUT=28;                 // px reserved on the top & left edges for tick marks + labels
 const RULER_AVAIL_H=300;            // target print height in the stage; width comes from the stage
 function renderPreview2(){
