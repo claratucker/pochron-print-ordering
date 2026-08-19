@@ -63,6 +63,12 @@ function isUS(country) {
   const c = String(country ?? 'US').trim().toLowerCase();
   return !c || ['us', 'usa', 'united states', 'united states of america'].includes(c);
 }
+// Shipping is only manually reducible on international orders (Julie entering the
+// real postage). Domestic zone rates are fixed, so a domestic order's captured
+// shipping must never be lowered. Unknown/empty country fails closed to domestic.
+export function isShippingAdjustable(country) {
+  return !isUS(country);
+}
 // ZIP3 prefix -> zone (fallback when the state field doesn't resolve). Requires
 // at least 3 digits so a partial ZIP can't match prematurely.
 function zoneFromZip(zip) {

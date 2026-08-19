@@ -435,8 +435,12 @@ function wireOrder(o){
   const hint = el.querySelector('[data-hint]');
 
   const actship = el.querySelector('.actship');
-  const actualShipping = () => actship ? Math.min(Math.max(0, parseFloat(actship.value)||0), o.shippingCost||0) : (o.shippingCost||0);
-  const fullTotal = () => +(o.total - ((o.shippingCost||0) - actualShipping())).toFixed(2);
+  const shipDefault = o.shippingCost || 0;
+  const actualShipping = () => actship ? Math.min(Math.max(0, parseFloat(actship.value)||0), shipDefault) : shipDefault;
+  // Only send a reduction when Julie actually lowered the field below the quote.
+  // Absent or untouched sends nothing, and the server captures the full authorized total.
+  const shipReduced = () => !!actship && actualShipping() < shipDefault - 0.005;
+  const fullTotal = () => +(o.total - (shipDefault - actualShipping())).toFixed(2);
   function refreshHint(){
     if(!hint) return;
     const ids = selected();
@@ -459,7 +463,7 @@ function wireOrder(o){
     approveBtn.disabled = true;
     try {
       const r = await api(`/api/studio/orders/${o.id}/approve`, {
-        method:'POST', body: JSON.stringify(all ? { actualShipping: actualShipping() } : { itemIds: ids }),
+        method:'POST', body: JSON.stringify(all ? (shipReduced() ? { actualShipping: actualShipping() } : {}) : { itemIds: ids }),
       });
       toast(`${o.ref}: captured ${money(r.captured)}${r.partial?' (partial)':''} → ${statusLabel(r.status)}`);
       load();

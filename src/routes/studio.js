@@ -7,7 +7,7 @@ import { requireStudio } from '../lib/auth.js';
 import { payment } from '../adapters/payment.js';
 import { emails } from '../adapters/email.js';
 import { getOrder, transition, addMessage } from '../lib/orders.js';
-import { captureAmountFor } from '../lib/pricing.js';
+import { captureAmountFor, isShippingAdjustable } from '../lib/pricing.js';
 import { storage } from '../adapters/storage.js';
 import { renderRecipe, recipeIsNoop } from '../lib/render.js';
 
@@ -172,6 +172,11 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
   if (!ap.success) return res.status(400).json({ error: 'Invalid approval request.', details: ap.error.flatten() });
   const { itemIds, actualShipping } = ap.data;
 
+  // Shipping may only be reduced on international orders. On a domestic order the
+  // fixed zone rate stands, so any actualShipping is dropped here — a stray or zero
+  // value can never strip real shipping from the capture. Fails closed to domestic.
+  const shipOverride = isShippingAdjustable(order.ship_country) ? actualShipping : undefined;
+
   const approving = itemIds?.length ? order.items.filter((i) => itemIds.includes(i.id)) : order.items;
   if (!approving.length) return res.status(400).json({ error: 'No matching items to approve.' });
 
@@ -180,7 +185,7 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
   // international postage). captureAmountFor keeps this testable.
   const { amount: captureAmount, partial, adjustedShipping } = captureAmountFor(
     { total: order.total, shippingCost: order.shipping_cost, items: order.items },
-    { itemIds, actualShipping },
+    { itemIds, actualShipping: shipOverride },
   );
 
   // A lapsed authorization cannot be captured. Say so plainly and point at the
