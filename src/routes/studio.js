@@ -180,6 +180,18 @@ studioRouter.post('/orders/:id/approve', async (req, res) => {
   const approving = itemIds?.length ? order.items.filter((i) => itemIds.includes(i.id)) : order.items;
   if (!approving.length) return res.status(400).json({ error: 'No matching items to approve.' });
 
+  // Partial approval is DISABLED. Stripe manual capture is one-shot: capturing a
+  // subset finalizes the PaymentIntent and releases the rest, so the held items
+  // (and shipping, which settles on full approval) could never be captured after —
+  // they would ship unpaid. Until per-item re-authorization exists, only whole-order
+  // approval is allowed. Refused here so no split capture can run, whatever the client sends.
+  if (itemIds?.length && approving.length < order.items.length) {
+    return res.status(409).json({
+      error: 'Partial approval is temporarily unavailable. Approve the whole order, or use Hold & message to pause it while you sort a photo out.',
+      code: 'PARTIAL_DISABLED',
+    });
+  }
+
   // Amount to capture: approved line totals on partials; on full approval the
   // order total, minus any down-only shipping correction Julie enters (the real
   // international postage). captureAmountFor keeps this testable.
