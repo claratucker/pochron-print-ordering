@@ -65,6 +65,18 @@ async function deliver(order, type, msg) {
   }
 }
 
+// Delivery wording by method. Pickup and local delivery never "ship".
+function shipLine(order) {
+  if (order.ship_method === 'pickup') return `Pickup:    Free (Stanfordville studio)`;
+  if (order.ship_method === 'local') return `Delivery:  ${money(order.shipping_cost)} (local, Stanfordville)`;
+  return `Shipping:  ${money(order.shipping_cost)}`;
+}
+function nextStepLine(order) {
+  if (order.ship_method === 'pickup') return 'We will email you when your prints are ready for pickup.';
+  if (order.ship_method === 'local') return 'We will email you when your prints head out for delivery.';
+  return "We'll email tracking as soon as it ships.";
+}
+
 export const emails = {
   // order received — includes a copy of the submission (§11)
   async confirmation(order) {
@@ -76,7 +88,7 @@ Order reference: ${order.ref}
 ${itemLines(order)}
 
 Subtotal:  ${money(order.subtotal)}${order.discount_amount ? `\nDiscount:  −${money(order.discount_amount)}` : ''}
-Shipping:  ${money(order.shipping_cost)}
+${shipLine(order)}
 Tax:       ${money(order.tax)}
 Total:     ${money(order.total)}
 
@@ -134,7 +146,7 @@ Pochron Studios · info@pochronstudios.com`;
 
 Charged: ${money(capturedAmount)}
 
-We'll email tracking as soon as it ships.
+${nextStepLine(order)}
 
 Pochron Studios · info@pochronstudios.com`;
     return deliver(order, 'approved', { to: order.email, subject: `Approved & printing — ${order.ref}`, text });
@@ -142,6 +154,27 @@ Pochron Studios · info@pochronstudios.com`;
 
   // shipped
   async shipped(order, tracking) {
+    if (order.ship_method === 'pickup') {
+      const p = config.fulfillment.pickup;
+      const text =
+`Your order ${order.ref} is ready for pickup.
+
+Pochron Studios
+${p.addr1}
+${p.city}, ${p.state} ${p.zip}
+
+${p.note}
+
+Pochron Studios · info@pochronstudios.com`;
+      return deliver(order, 'shipped', { to: order.email, subject: `Ready for pickup: ${order.ref}`, text });
+    }
+    if (order.ship_method === 'local') {
+      const text =
+`Your order ${order.ref} is out for local delivery.
+
+Pochron Studios · info@pochronstudios.com`;
+      return deliver(order, 'shipped', { to: order.email, subject: `Out for delivery: ${order.ref}`, text });
+    }
     const text =
 `Your order ${order.ref} has shipped.${tracking ? `\n\nTracking: ${tracking}` : ''}
 

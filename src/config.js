@@ -79,6 +79,16 @@ export const config = {
     // own business name, so only the street portion is configured here.
     dropAddress: process.env.DROP_ADDRESS
       || '207 Haight Hill Rd\nStanfordville, NY 12581',
+    // Where pickup customers collect their prints. Stored as the order's ship-to
+    // so tax sources to the studio and every downstream reader sees a real address.
+    pickup: {
+      addr1: process.env.PICKUP_ADDR1 || '207 Haight Hill Rd',
+      city: process.env.PICKUP_CITY || 'Stanfordville',
+      state: process.env.PICKUP_STATE || 'NY',
+      zip: process.env.PICKUP_ZIP || '12581',
+      // Extra line in the ready-for-pickup email (hours, where to knock, etc.).
+      note: process.env.PICKUP_NOTE || 'Reply to this email to arrange a pickup time.',
+    },
   },
 
   // Email verification (§8 layer 3). none | kickbox | zerobounce

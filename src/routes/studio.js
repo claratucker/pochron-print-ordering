@@ -64,7 +64,7 @@ studioRouter.get('/queue', async (req, res) => {
     `SELECT id, ref, status, customer_name, email, phone,
             ship_name, ship_addr1, ship_addr2, ship_city, ship_state, ship_zip, ship_country,
             white_label, white_label_name, wl_addr1, wl_addr2, wl_city, wl_state, wl_zip, wl_country,
-            tax_status, total, created_at,
+            ship_method, shipping_cost, tax_status, total, created_at,
             payment_ref, payment_status, authorized_at, reauth_count
        FROM orders ORDER BY (status IN ('submitted','on_hold')) DESC, created_at DESC LIMIT 100`
   ).all();
@@ -76,7 +76,8 @@ studioRouter.get('/queue', async (req, res) => {
       phone: o.phone || null,
       // Where the prints actually go. This is what Julie ships to — distinct from
       // the return address printed on the parcel.
-      shipTo: [
+      shipMethod: o.ship_method || 'standard',
+      shipTo: o.ship_method === 'pickup' ? `${o.customer_name}\nPicking up at the studio` : [
         o.ship_name || o.customer_name,
         o.ship_addr1,
         o.ship_addr2,
@@ -84,6 +85,8 @@ studioRouter.get('/queue', async (req, res) => {
         o.ship_country && !/^(us|usa|united states)$/i.test(String(o.ship_country).trim()) ? o.ship_country : null,
       ].filter((line) => line && line.trim()).join('\n'),
       whiteLabel: !!o.white_label, total: o.total, shippingCost: o.shipping_cost, createdAt: o.created_at,
+      // Only international postage may be lowered at approval (mirrors the approve route).
+      shipAdjustable: isShippingAdjustable(o.ship_country) && o.ship_method !== 'pickup' && o.ship_method !== 'local',
       paymentStatus: o.payment_status || null,
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
@@ -133,7 +136,7 @@ studioRouter.get('/queue', async (req, res) => {
 studioRouter.get('/orders.csv', (req, res) => {
   const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = ['Ref', 'Date', 'Status', 'Payment', 'Customer', 'Email', 'Phone', 'Ship to',
+  const header = ['Ref', 'Date', 'Status', 'Payment', 'Customer', 'Email', 'Phone', 'Delivery', 'Ship to',
     'White label', 'White-label name', 'Items', 'Subtotal', 'Shipping', 'Tax', 'Total'];
   const lines = [header.map(q).join(',')];
   for (const o of orders) {
@@ -145,7 +148,7 @@ studioRouter.get('/orders.csv', (req, res) => {
       o.ship_country && !/^(us|usa|united states)$/i.test(String(o.ship_country).trim()) ? o.ship_country : null,
     ].filter((l) => l && String(l).trim()).join(', ');
     lines.push([o.ref, o.created_at, o.status, o.payment_status, o.customer_name, o.email, o.phone,
-      shipTo, o.white_label ? 'Yes' : 'No', o.white_label_name, items,
+      o.ship_method || 'standard', o.ship_method === 'pickup' ? 'Studio pickup' : shipTo, o.white_label ? 'Yes' : 'No', o.white_label_name, items,
       o.subtotal, o.shipping_cost, o.tax, o.total].map(q).join(','));
   }
   const csv = '\uFEFF' + lines.join('\r\n');   // BOM so Excel opens it as UTF-8
@@ -305,7 +308,10 @@ studioRouter.post('/orders/:id/ship', async (req, res) => {
   if (!sp.success) return res.status(400).json({ error: 'Invalid ship request.', details: sp.error.flatten() });
   const { tracking } = sp.data;
   db.prepare(`UPDATE orders SET tracking=?, updated_at=datetime('now') WHERE id=?`).run(tracking || null, order.id);
-  transition(order.id, 'shipped', tracking ? `Shipped: ${tracking}` : 'Shipped');
+  const doneNote = order.ship_method === 'pickup' ? 'Ready for pickup'
+    : order.ship_method === 'local' ? 'Out for local delivery'
+    : tracking ? `Shipped: ${tracking}` : 'Shipped';
+  transition(order.id, 'shipped', doneNote);
   try { await emails.shipped(getOrder(order.id), tracking); } catch (e) { console.error('Shipped email failed:', e.message); }
   res.json({ ref: order.ref, status: 'shipped', tracking: tracking || null });
 });

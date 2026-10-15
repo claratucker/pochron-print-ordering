@@ -76,15 +76,22 @@ const OrderSchema = z.object({
     email: z.string().min(1, 'your email'),
     phone: z.string().optional(),
   }),
+  // Address fields are required for every method except studio pickup, where the
+  // customer gives no address and the order records the studio as its ship-to.
   shipping: z.object({
     name: z.string().optional(),
-    addr1: z.string().min(1, 'a street address'),
+    addr1: z.string().optional(),
     addr2: z.string().optional(),
-    city: z.string().min(1, 'city'),
-    state: z.string().min(1, 'state'),
-    zip: z.string().min(1, 'ZIP'),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zip: z.string().optional(),
     country: z.string().default('United States'),
     method: z.string(),
+  }).superRefine((s, ctx) => {
+    if (s.method === 'pickup') return;
+    for (const [k, msg] of [['addr1', 'a street address'], ['city', 'city'], ['state', 'state'], ['zip', 'ZIP']]) {
+      if (!String(s[k] || '').trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [k], message: msg });
+    }
   }),
   whiteLabel: z.boolean().default(false),
   whiteLabelName: z.string().trim().min(1).max(120).optional(),
@@ -107,7 +114,12 @@ ordersRouter.post('/', async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: 'Please complete the required fields.', details: parsed.error.flatten() });
   }
-  const { items, contact, shipping, whiteLabel, whiteLabelName, whiteLabelReturn, lowResAck, emailConfirmed, paymentMethodId } = parsed.data;
+  const { items, contact, whiteLabel, whiteLabelName, whiteLabelReturn, lowResAck, emailConfirmed, paymentMethodId } = parsed.data;
+  // Pickup orders take the studio as their address: tax sources to Stanfordville,
+  // and the studio queue, CSV and emails all read a real location.
+  const shipping = parsed.data.shipping.method === 'pickup'
+    ? { ...config.fulfillment.pickup, addr2: undefined, country: 'United States', name: contact.name, method: 'pickup' }
+    : parsed.data.shipping;
 
   // Email format gate (layer 1 of §8; verification API + confirmation email are the stronger layers).
   if (!EMAIL_RE.test(contact.email)) {
@@ -185,6 +197,12 @@ ordersRouter.post('/', async (req, res) => {
       return res.status(422).json({
         error: 'Orders of 100+ prints are custom-quoted. Please contact the studio.',
         code: 'MANUAL_QUOTE', studio: config.email.studioContactUrl,
+      });
+    }
+    if (q.shipNotLocal) {
+      return res.status(422).json({
+        error: 'Local delivery covers Stanfordville (ZIP 12581) only. Choose studio pickup or shipping instead.',
+        code: 'LOCAL_ONLY',
       });
     }
     if (q.shipGate) {

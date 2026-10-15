@@ -153,4 +153,14 @@ export const SETTINGS = {
   dpi_min: DPI_MIN,
   px_per_in: PX_PER_IN,
   free_ship_over: 0,   // free shipping when subtotal >= this; 0 = off
+  local_delivery_fee: 5,   // flat local delivery fee ($); placeholder until Julie sets it
 };
+
+// Studio pickup and local delivery. Coverage is code-owned (like SHIP_REGIONS):
+// Julie edits the local fee in admin, not which ZIPs qualify. Anything outside
+// this list cannot select local delivery; it fails closed, never to a cheaper tier.
+export const LOCAL_DELIVERY_ZIPS = ['12581'];   // Stanfordville, NY
+export const PICKUP_METHODS = [
+  { id: 'pickup', label: 'Studio pickup, Stanfordville (free)' },
+  { id: 'local', label: 'Local delivery, Stanfordville 12581 only' },
+];

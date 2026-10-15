@@ -81,6 +81,21 @@ function zoneFromZip(zip) {
 // Returns { cost, zone, label, method }. printsTotal is the discounted goods total,
 // used for the free-shipping threshold.
 export function shippingForZone(cat, address, methodId, printsTotal) {
+  // Studio pickup: free. Local delivery: flat fee, only to the listed ZIPs.
+  // A non-local address on 'local' fails closed (notLocal) and the order route
+  // refuses it; it never falls through to a cheaper or different rate.
+  if (methodId === 'pickup') {
+    return { cost: 0, zone: 'pickup', label: 'Studio pickup, Stanfordville', method: 'pickup', pickup: true };
+  }
+  if (methodId === 'local') {
+    const zip5 = String(address?.zip || '').replace(/\D/g, '').slice(0, 5);
+    const ok = isUS(address?.country) && (cat.localZips || []).includes(zip5);
+    if (!ok) return { cost: 0, zone: 'local', label: 'Local delivery (Stanfordville only)', method: 'local', notLocal: true };
+    // Never charge more for local delivery than the order would pay to ship.
+    const free = Number(cat.freeShipOver || 0);
+    if (free > 0 && printsTotal >= free) return { cost: 0, zone: 'local', label: 'Local delivery, Stanfordville', method: 'local' };
+    return { cost: round2(Number(cat.localDeliveryFee ?? 0)), zone: 'local', label: 'Local delivery, Stanfordville', method: 'local' };
+  }
   const exp = methodId === 'expedited';
   const free = Number(cat.freeShipOver || 0);
   if (isUS(address?.country)) {
@@ -132,6 +147,7 @@ export function priceOrder(cat, items, files, shipMethodId, address) {
     tier: { min: tier.min, rate: tier.rate, label: tier.label },
     manualQuote, discountRate, discountAmount, printsTotal,
     shipMethod: ship.method, shippingLabel: ship.label, shippingCost, shipZone: ship.zone, shipGate: !!ship.gate,
+    shipNotLocal: !!ship.notLocal, pickup: !!ship.pickup,
     anyTooSmall,
     // Tax + final total are finished in finalizeTotals() once we have an address.
   };

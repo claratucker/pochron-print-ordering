@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { loadCatalog } from '../lib/catalog.js';
 import { priceOrder, finalizeTotals, PriceError } from '../lib/pricing.js';
 import { tax } from '../adapters/misc.js';
+import { config } from '../config.js';
 
 export const priceRouter = Router();
 
@@ -36,7 +37,9 @@ priceRouter.post('/quote', async (req, res) => {
   try {
     const cat = loadCatalog();
     const quote = priceOrder(cat, items, files, shipMethod, address);
-    const taxResult = await tax.quote({ printsTotal: quote.printsTotal, shippingCost: quote.shippingCost, address });
+    // Pickup taxes at the studio, matching what POST /api/orders charges.
+    const taxAddress = shipMethod === 'pickup' ? { ...config.fulfillment.pickup, country: 'US' } : address;
+    const taxResult = await tax.quote({ printsTotal: quote.printsTotal, shippingCost: quote.shippingCost, address: taxAddress });
     res.json({ ...finalizeTotals(quote, taxResult.amount), taxStatus: taxResult.status });
   } catch (e) {
     if (e instanceof PriceError) return res.status(400).json({ error: e.message });

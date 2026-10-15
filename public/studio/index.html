@@ -65,6 +65,7 @@
   .b-submitted{background:var(--warn-bg);color:var(--warn);border-color:#e6cf9f}
   .b-on_hold{background:var(--bad-bg);color:var(--bad);border-color:#e3c3bf}
   .b-in_production,.b-approved{background:var(--ok-bg);color:var(--ok);border-color:#c3ddc7}
+  .b-local{background:#eef6ee;color:#2f6b3a;border-color:#cfe3d1}
   .b-shipped,.b-complete{background:var(--paper2);color:var(--soft);border-color:var(--line)}
   .b-wl{background:#efeaf6;color:var(--petrol);border-color:#d9cfe8}
   .b-auth-expiring{background:var(--warn-bg);color:var(--warn);border-color:#e6cf9f}
@@ -298,6 +299,7 @@ function orderCard(o){
       <span class="ref">${esc(o.ref)}</span>
       <span class="badge b-${o.status}">${esc(statusLabel(o.status))}</span>
       ${o.whiteLabel ? '<span class="badge b-wl">White-label · neutral label, no inserts</span>' : ''}
+      ${o.shipMethod==='pickup' ? '<span class="badge b-local">Studio pickup</span>' : o.shipMethod==='local' ? '<span class="badge b-local">Local delivery</span>' : ''}
       ${o.auth && o.auth.label ? `<span class="badge b-auth-${o.auth.status}">${esc(o.auth.label)}</span>` : ''}
       <div class="who">${esc(o.who)} <span class="em">· ${esc(o.email)}</span></div>
       <div class="grow"></div>
@@ -306,13 +308,13 @@ function orderCard(o){
     </div>
     <div class="parcels">
       <div class="pcol">
-        <span class="lbl">Ship to</span>
+        <span class="lbl">${o.shipMethod==='pickup' ? 'Pickup' : o.shipMethod==='local' ? 'Deliver to' : 'Ship to'}</span>
         <div class="addr">${esc(o.shipTo||'—').replace(/\n/g,'<br>')}${o.phone ? `<br><span class="ph">☎ ${esc(o.phone)}</span>` : ''}</div>
       </div>
-      <div class="pcol ret">
+      ${o.shipMethod==='pickup' ? '' : `<div class="pcol ret">
         <span class="lbl">Return address${o.whiteLabel ? ' · white-label' : ''}</span>
         <div class="addr">${esc(o.returnAddress||'').replace(/\n/g,'<br>')}</div>
-      </div>
+      </div>`}
     </div>
     <div class="items">${items}</div>
     ${thread}
@@ -398,7 +400,7 @@ function actionsBlock(o){
   <div class="actions">
     <button class="approve">Approve &amp; print</button>
     <span class="amt-hint" data-hint></span>
-    ${o.shippingCost > 0 ? `<div class="shipadj" style="margin:8px 0;font-size:13px"><label>Shipping charged $<input class="actship" type="number" min="0" step="0.01" max="${o.shippingCost}" value="${o.shippingCost}" style="width:80px"></label> <span class="note" style="display:inline">Lower to the real postage (e.g. international); only reduces.</span></div>` : ''}
+    ${(o.shipAdjustable && o.shippingCost > 0) ? `<div class="shipadj" style="margin:8px 0;font-size:13px"><label>Shipping charged $<input class="actship" type="number" min="0" step="0.01" max="${o.shippingCost}" value="${o.shippingCost}" style="width:80px"></label> <span class="note" style="display:inline">Lower to the real postage (e.g. international); only reduces.</span></div>` : ''}
     <div class="holdbox">
       <textarea class="holdmsg" placeholder="Message the customer (e.g. ask for a higher-res file), then place the order on hold…"></textarea>
       <div class="holdrow"><button class="ghost hold">Hold &amp; message</button></div>
@@ -417,6 +419,16 @@ function actionsBlock(o){
   </div>`;
 }
 function shipOnlyBlock(o){
+  if (o.shipMethod==='pickup' || o.shipMethod==='local') {
+    const pickup = o.shipMethod==='pickup';
+    return `
+  <div class="actions">
+    <div class="shiprow">
+      <button class="ship">${pickup ? 'Mark ready for pickup' : 'Mark out for delivery'}</button>
+    </div>
+    <div class="note">${pickup ? `Emails the customer that ${esc(o.ref)} is ready, with the studio address.` : `Emails the customer that ${esc(o.ref)} is on its way.`}</div>
+  </div>`;
+  }
   return `
   <div class="actions">
     <div class="shiprow">
@@ -485,11 +497,11 @@ function wireOrder(o){
 
   const shipBtn = el.querySelector('.ship');
   if (shipBtn) shipBtn.onclick = async () => {
-    const tracking = el.querySelector('.tracking').value.trim();
+    const trk = el.querySelector('.tracking'), tracking = trk ? trk.value.trim() : '';
     shipBtn.disabled = true;
     try {
       await api(`/api/studio/orders/${o.id}/ship`, { method:'POST', body: JSON.stringify({ tracking }) });
-      toast(`${o.ref} marked shipped.`);
+      toast(o.shipMethod==='pickup' ? `${o.ref} marked ready for pickup.` : o.shipMethod==='local' ? `${o.ref} marked out for delivery.` : `${o.ref} marked shipped.`);
       load();
     } catch(e){ shipBtn.disabled=false; toast(e.message); }
   };

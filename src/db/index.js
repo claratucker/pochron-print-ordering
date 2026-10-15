@@ -176,5 +176,6 @@ if (db.prepare('SELECT COUNT(*) AS c FROM ship_zones').get().c === 0) {
   db.transaction(() => SHIP_ZONES.forEach((z) => ins.run(z.key, z.label, z.kind, z.standard, z.expedited, z.sort)))();
 }
 db.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('free_ship_over','0')`).run();
+db.prepare(`INSERT OR IGNORE INTO settings (key,value) VALUES ('local_delivery_fee','5')`).run();
 
 export { DATA_DIR };
