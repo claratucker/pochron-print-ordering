@@ -102,9 +102,8 @@ function render(c) {
     dpi_min: 'Minimum DPI (warn below this)',
     px_per_in: 'Preview pixels per inch',
     free_ship_over: 'Free US standard shipping over ($; 0 = off)',
-    local_delivery_fee: 'Local delivery fee, Stanfordville 12581 ($)',
   };
-  const s = { cc_add: c.ccAdd, dpi_good: c.dpiGood, dpi_min: c.dpiMin, px_per_in: c.pxPerIn, free_ship_over: c.freeShipOver ?? 0, local_delivery_fee: c.localDeliveryFee ?? 5 };
+  const s = { cc_add: c.ccAdd, dpi_good: c.dpiGood, dpi_min: c.dpiMin, px_per_in: c.pxPerIn, free_ship_over: c.freeShipOver ?? 0 };
   $('settings').innerHTML = Object.entries(s).map(([k, v]) =>
     `<label>${SETTING_LABELS[k] || k}<br><input data-set="${k}" value="${v}"></label>`).join('');
 }

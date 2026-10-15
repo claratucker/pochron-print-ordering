@@ -403,7 +403,7 @@
         <h3>Delivery</h3>
         <div class="co-grid">
           <div class="co-field full"><label>How should your prints reach you?</label><select id="shipMethod"></select></div>
-          <div class="co-field full hidden" id="pickupNote"><div class="help">Pick up your prints at the studio in Stanfordville. We email you the address when your order is ready.</div></div>
+          <div class="co-field full hidden" id="pickupNote"><div class="help">Pick up your prints at our studio in Stanfordville, NY. We will contact you when your order is ready.</div></div>
           <div class="co-field full addrf"><label>Recipient</label><input type="text" id="shipName" placeholder="Name on the package"></div>
           <div class="co-field full addrf"><label>Address *</label><input type="text" id="shipAddr1" placeholder="Street address"></div>
           <div class="co-field full addrf"><label>Apt / suite (optional)</label><input type="text" id="shipAddr2"></div>
@@ -512,7 +512,6 @@ let PRICES={
 const BORDERS={none:{label:"No border (fills the print)",add:0},border:{label:"White border (fits the whole image)",add:0}};
 let SHIP_METHODS=[{id:"standard",label:"Standard (5–7 business days)",cost:12},{id:"expedited",label:"Expedited (2–3 business days)",cost:28}];
 let SHIP_ZONES=[]; let SHIP_REGIONS={states:{},names:{},zip3:[]}; let FREE_SHIP_OVER=0; let SHIP_COUNTRIES={};
-let LOCAL_ZIPS=[]; let LOCAL_FEE=null;
 // Volume discounts apply to the whole order by total print count (from the pricing sheet).
 let VOLUME=[{min:100,rate:null,label:"Contact us for custom pricing"},{min:50,rate:.20,label:"Save 20%"},{min:25,rate:.15,label:"Save 15%"},{min:10,rate:.10,label:"Save 10%"},{min:1,rate:0,label:"Standard pricing"}];
 let CC_ADD=15; // Pochron Studios by-hand color correction — flat, charged ONCE per image (not per copy)
@@ -558,8 +557,6 @@ async function syncCatalog(){
     if(j.shipRegions&&j.shipRegions.states)SHIP_REGIONS=j.shipRegions;
     if(j.shipCountries)SHIP_COUNTRIES=j.shipCountries;
     if(typeof j.freeShipOver==='number')FREE_SHIP_OVER=j.freeShipOver;
-    if(Array.isArray(j.localZips))LOCAL_ZIPS=j.localZips;
-    if(typeof j.localDeliveryFee==='number')LOCAL_FEE=j.localDeliveryFee;
     if(j.volume&&j.volume.length)VOLUME=j.volume.slice().sort((a,b)=>b.min-a.min);
     if(j.dpiGood)DPI_GOOD=j.dpiGood;
     if(j.dpiMin)DPI_MIN=j.dpiMin;
@@ -1417,15 +1414,8 @@ function _normState(v){const t=String(v||"").trim().toUpperCase();if(SHIP_REGION
 function _zipZone(zip){const d=String(zip||"").replace(/\D/g,"");if(d.length<3)return null;const z3=parseInt(d.slice(0,3),10);for(const r of (SHIP_REGIONS.zip3||[]))if(z3>=r[0]&&z3<=r[1])return r[2];return null;}
 function zoneShip(methodId){
   const st=$("shipState")?$("shipState").value:"", ctry=$("shipCountry")?$("shipCountry").value:"United States";
-  // Pickup is free; local delivery is a flat fee inside LOCAL_ZIPS only (fails closed, like the server).
-  if(methodId==="pickup") return {cost:0,label:"Studio pickup",pickup:true};
-  if(methodId==="local"){
-    const z5=String($("shipZip")?$("shipZip").value:"").replace(/\D/g,"").slice(0,5);
-    if(z5.length<5) return {unknown:true,local:true};
-    if(!_isUS(ctry)||!LOCAL_ZIPS.includes(z5)||LOCAL_FEE==null) return {notLocal:true,local:true};
-    if(Number(FREE_SHIP_OVER||0)>0&&grandTotal()>=Number(FREE_SHIP_OVER)) return {cost:0,label:"Local delivery",local:true,free:true};
-    return {cost:+(+LOCAL_FEE).toFixed(2),label:"Local delivery",local:true};
-  }
+  // Studio pickup is free and needs no address.
+  if(methodId==="pickup") return {cost:0,label:"Studio pickup",pickup:true,free:true};
   const exp=methodId==="expedited", free=Number(FREE_SHIP_OVER||0), prints=grandTotal();
   if(_isUS(ctry)){
     const zip=$("shipZip")?$("shipZip").value:"", zipDigits=String(zip).replace(/\D/g,"");
@@ -1448,30 +1438,28 @@ function zoneShip(methodId){
 function shipCost(){const r=zoneShip(state.shipMethod);return r.unknown?0:r.cost;}
 function renderCheckout(){
   const sel=$("shipMethod");
-  sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=(m.id==="local"&&LOCAL_FEE!=null)?" · "+money(LOCAL_FEE):(r.unknown||r.gate||r.notLocal||r.pickup)?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
+  sel.innerHTML=SHIP_METHODS.map(m=>{const r=zoneShip(m.id);const tag=(r.unknown||r.gate)?"":r.free?" · Free":" · "+money(r.cost);return `<option value="${m.id}" ${m.id===state.shipMethod?"selected":""}>${m.label}${tag}</option>`;}).join("");
   sel.onchange=e=>{state.shipMethod=e.target.value;renderCheckout();};
   ["shipState","shipZip","shipCountry"].forEach(id=>{const el=$(id);if(el&&!el._zoneWired){el._zoneWired=true;el.addEventListener("input",renderCheckout);}});
   $("whiteLabel").checked=state.whiteLabel;$("whiteLabelWrap").classList.toggle("on",state.whiteLabel);
-  const _r=zoneShip(state.shipMethod), gated=!!_r.gate, notLocal=!!_r.notLocal, ship=(_r.unknown||gated||notLocal)?0:_r.cost;
+  const _r=zoneShip(state.shipMethod), gated=!!_r.gate, ship=(_r.unknown||gated)?0:_r.cost;
   document.querySelectorAll(".addrf").forEach(el=>el.classList.toggle("hidden",!!_r.pickup));
   $("pickupNote")&&$("pickupNote").classList.toggle("hidden",!_r.pickup);
   const shipCell=gated?`<span class="gatecell">Contact the studio for a quote</span>`
-    :notLocal?`<span class="gatecell">Stanfordville (12581) only</span>`
-    :_r.unknown?`<span class="muted">${_r.local?"enter your ZIP":"enter your state"}</span>`
-    :(_r.free||_r.pickup)?"Free":money(_r.cost);
-  const shipRowLabel=_r.pickup?"Pickup":_r.local?"Local delivery":"Shipping";
+    :_r.unknown?`<span class="muted">enter your state</span>`
+    :_r.free?"Free":money(_r.cost);
+  const shipRowLabel=_r.pickup?"Pickup":"Shipping";
   const sub=subTotal(), prints=grandTotal(), total=+(prints+ship).toFixed(2), t=volumeTier(), saved=+(sub-prints).toFixed(2);
-  const dutiesNote=notLocal?`<div class="dutynote">Local delivery covers Stanfordville (ZIP 12581) only. Choose studio pickup or shipping instead.</div>`
-    :(_r.intl||gated)?`<div class="dutynote">${gated?"We don't ship to that country through the site yet — contact the studio for a shipping quote.":"International orders: import duties and taxes are the recipient's responsibility."}</div>`:"";
+  const dutiesNote=(_r.intl||gated)?`<div class="dutynote">${gated?"We don't ship to that country through the site yet — contact the studio for a shipping quote.":"International orders: import duties and taxes are the recipient's responsibility."}</div>`:"";
   refreshDpiGates();
   const pob=$("placeOrderBtn");
-  if(pob&&pob.textContent!=="Placing order…") pob.disabled=gated||notLocal;
+  if(pob&&pob.textContent!=="Placing order…") pob.disabled=gated;
   $("coSummary").innerHTML=`
     <div class="row"><span>Prints</span><span>${money(sub)}</span></div>
     ${(t&&t.rate)?`<div class="row saved"><span>Volume discount · ${t.label.toLowerCase()}</span><span>\u2212${money(saved)}</span></div>`:""}
     <div class="row"><span>${shipRowLabel}</span><span>${shipCell}</span></div>
     <div class="row"><span>Tax</span><span>${_r.pickup?"calculated at checkout":"calculated from address"}</span></div>
-    <div class="row tot"><span>Total</span><span>${gated?`<span class="muted">quote required</span>`:notLocal?`<span class="muted">choose another option</span>`:money(total)}</span></div>
+    <div class="row tot"><span>Total</span><span>${gated?`<span class="muted">quote required</span>`:money(total)}</span></div>
     ${dutiesNote}`;
 }
 
@@ -1480,7 +1468,6 @@ const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 $("placeOrderBtn").onclick=()=>{
   const _zs=zoneShip(state.shipMethod);
   if(_zs.gate){$("shipCountry")&&$("shipCountry").classList.add("bad-field");return;}
-  if(_zs.notLocal){$("shipZip")&&$("shipZip").classList.add("bad-field");return;}
   const required=_zs.pickup?[["coName","your name"],["coEmail","your email"]]
     :[["coName","your name"],["coEmail","your email"],["shipAddr1","a street address"],["shipCity","city"],["shipState","state"],["shipZip","ZIP"]];
   if(_zs.pickup)["shipAddr1","shipCity","shipState","shipZip"].forEach(id=>$(id)&&$(id).classList.remove("bad-field"));

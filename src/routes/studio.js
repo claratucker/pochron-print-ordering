@@ -86,7 +86,7 @@ studioRouter.get('/queue', async (req, res) => {
       ].filter((line) => line && line.trim()).join('\n'),
       whiteLabel: !!o.white_label, total: o.total, shippingCost: o.shipping_cost, createdAt: o.created_at,
       // Only international postage may be lowered at approval (mirrors the approve route).
-      shipAdjustable: isShippingAdjustable(o.ship_country) && o.ship_method !== 'pickup' && o.ship_method !== 'local',
+      shipAdjustable: isShippingAdjustable(o.ship_country) && o.ship_method !== 'pickup',
       paymentStatus: o.payment_status || null,
       // The address that goes on the parcel: neutral for white-label (§10).
       whiteLabelName: o.white_label_name || null,
@@ -309,7 +309,6 @@ studioRouter.post('/orders/:id/ship', async (req, res) => {
   const { tracking } = sp.data;
   db.prepare(`UPDATE orders SET tracking=?, updated_at=datetime('now') WHERE id=?`).run(tracking || null, order.id);
   const doneNote = order.ship_method === 'pickup' ? 'Ready for pickup'
-    : order.ship_method === 'local' ? 'Out for local delivery'
     : tracking ? `Shipped: ${tracking}` : 'Shipped';
   transition(order.id, 'shipped', doneNote);
   try { await emails.shipped(getOrder(order.id), tracking); } catch (e) { console.error('Shipped email failed:', e.message); }

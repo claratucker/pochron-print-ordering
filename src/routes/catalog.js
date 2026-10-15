@@ -19,8 +19,6 @@ catalogRouter.get('/', (req, res) => {
     shipZones: c.shipZones,
     volume: c.volume,
     freeShipOver: c.freeShipOver,
-    localDeliveryFee: c.localDeliveryFee,
-    localZips: c.localZips,
     shipRegions: c.shipRegions,
     shipCountries: c.shipCountries,
     ccAdd: c.ccAdd,

@@ -299,7 +299,7 @@ function orderCard(o){
       <span class="ref">${esc(o.ref)}</span>
       <span class="badge b-${o.status}">${esc(statusLabel(o.status))}</span>
       ${o.whiteLabel ? '<span class="badge b-wl">White-label · neutral label, no inserts</span>' : ''}
-      ${o.shipMethod==='pickup' ? '<span class="badge b-local">Studio pickup</span>' : o.shipMethod==='local' ? '<span class="badge b-local">Local delivery</span>' : ''}
+      ${o.shipMethod==='pickup' ? '<span class="badge b-local">Studio pickup</span>' : ''}
       ${o.auth && o.auth.label ? `<span class="badge b-auth-${o.auth.status}">${esc(o.auth.label)}</span>` : ''}
       <div class="who">${esc(o.who)} <span class="em">· ${esc(o.email)}</span></div>
       <div class="grow"></div>
@@ -308,7 +308,7 @@ function orderCard(o){
     </div>
     <div class="parcels">
       <div class="pcol">
-        <span class="lbl">${o.shipMethod==='pickup' ? 'Pickup' : o.shipMethod==='local' ? 'Deliver to' : 'Ship to'}</span>
+        <span class="lbl">${o.shipMethod==='pickup' ? 'Pickup' : 'Ship to'}</span>
         <div class="addr">${esc(o.shipTo||'—').replace(/\n/g,'<br>')}${o.phone ? `<br><span class="ph">☎ ${esc(o.phone)}</span>` : ''}</div>
       </div>
       ${o.shipMethod==='pickup' ? '' : `<div class="pcol ret">
@@ -419,14 +419,13 @@ function actionsBlock(o){
   </div>`;
 }
 function shipOnlyBlock(o){
-  if (o.shipMethod==='pickup' || o.shipMethod==='local') {
-    const pickup = o.shipMethod==='pickup';
+  if (o.shipMethod==='pickup') {
     return `
   <div class="actions">
     <div class="shiprow">
-      <button class="ship">${pickup ? 'Mark ready for pickup' : 'Mark out for delivery'}</button>
+      <button class="ship">Mark ready for pickup</button>
     </div>
-    <div class="note">${pickup ? `Emails the customer that ${esc(o.ref)} is ready, with the studio address.` : `Emails the customer that ${esc(o.ref)} is on its way.`}</div>
+    <div class="note">Emails the customer that ${esc(o.ref)} is ready, with the studio address.</div>
   </div>`;
   }
   return `
@@ -501,7 +500,7 @@ function wireOrder(o){
     shipBtn.disabled = true;
     try {
       await api(`/api/studio/orders/${o.id}/ship`, { method:'POST', body: JSON.stringify({ tracking }) });
-      toast(o.shipMethod==='pickup' ? `${o.ref} marked ready for pickup.` : o.shipMethod==='local' ? `${o.ref} marked out for delivery.` : `${o.ref} marked shipped.`);
+      toast(o.shipMethod==='pickup' ? `${o.ref} marked ready for pickup.` : `${o.ref} marked shipped.`);
       load();
     } catch(e){ shipBtn.disabled=false; toast(e.message); }
   };

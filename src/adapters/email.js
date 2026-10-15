@@ -65,15 +65,13 @@ async function deliver(order, type, msg) {
   }
 }
 
-// Delivery wording by method. Pickup and local delivery never "ship".
+// Delivery wording by method. Pickup orders never "ship".
 function shipLine(order) {
   if (order.ship_method === 'pickup') return `Pickup:    Free (Stanfordville studio)`;
-  if (order.ship_method === 'local') return `Delivery:  ${money(order.shipping_cost)} (local, Stanfordville)`;
   return `Shipping:  ${money(order.shipping_cost)}`;
 }
 function nextStepLine(order) {
   if (order.ship_method === 'pickup') return 'We will email you when your prints are ready for pickup.';
-  if (order.ship_method === 'local') return 'We will email you when your prints head out for delivery.';
   return "We'll email tracking as soon as it ships.";
 }
 
@@ -167,13 +165,6 @@ ${p.note}
 
 Pochron Studios · info@pochronstudios.com`;
       return deliver(order, 'shipped', { to: order.email, subject: `Ready for pickup: ${order.ref}`, text });
-    }
-    if (order.ship_method === 'local') {
-      const text =
-`Your order ${order.ref} is out for local delivery.
-
-Pochron Studios · info@pochronstudios.com`;
-      return deliver(order, 'shipped', { to: order.email, subject: `Out for delivery: ${order.ref}`, text });
     }
     const text =
 `Your order ${order.ref} has shipped.${tracking ? `\n\nTracking: ${tracking}` : ''}

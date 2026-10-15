@@ -199,12 +199,6 @@ ordersRouter.post('/', async (req, res) => {
         code: 'MANUAL_QUOTE', studio: config.email.studioContactUrl,
       });
     }
-    if (q.shipNotLocal) {
-      return res.status(422).json({
-        error: 'Local delivery covers Stanfordville (ZIP 12581) only. Choose studio pickup or shipping instead.',
-        code: 'LOCAL_ONLY',
-      });
-    }
     if (q.shipGate) {
       return res.status(422).json({
         error: 'We don\'t ship to that destination through the site yet — please contact the studio for a shipping quote.',

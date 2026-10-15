@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { SHIP_REGIONS, SHIP_COUNTRIES, LOCAL_DELIVERY_ZIPS, PICKUP_METHODS } from '../catalog-defaults.js';
+import { SHIP_REGIONS, SHIP_COUNTRIES, PICKUP_METHODS } from '../catalog-defaults.js';
 
 // Reads the editable catalog out of the DB. This is what both the pricing
 // engine and the public GET /api/catalog serve, so the client never hardcodes
@@ -8,13 +8,10 @@ export function loadCatalog() {
   const papers = db.prepare('SELECT id,label,fam,descr FROM papers ORDER BY sort').all();
   const sizes = db.prepare('SELECT size FROM sizes ORDER BY sort').all().map((r) => r.size);
   const priceRows = db.prepare('SELECT fam,size,price FROM prices').all();
-  const settingsEarly = Object.fromEntries(db.prepare('SELECT key,value FROM settings').all().map((r) => [r.key, Number(r.value)]));
-  const localFee = settingsEarly.local_delivery_fee ?? 5;
-  // Pickup and local delivery ride alongside the DB shipping methods; their prices
-  // come from settings, so the client dropdown and the server agree.
+  // Studio pickup rides alongside the DB shipping methods, always free.
   const shipping = [
     ...db.prepare('SELECT id,label,cost FROM shipping_methods ORDER BY sort').all(),
-    ...PICKUP_METHODS.map((m) => ({ ...m, cost: m.id === 'local' ? localFee : 0 })),
+    ...PICKUP_METHODS.map((m) => ({ ...m, cost: 0 })),
   ];
   const shipZones = db.prepare('SELECT key,label,kind,standard,expedited FROM ship_zones ORDER BY sort').all();
   const volume = db.prepare('SELECT min_qty,rate,label FROM volume_tiers ORDER BY min_qty DESC').all()
@@ -39,8 +36,6 @@ export function loadCatalog() {
     dpiMin: settings.dpi_min ?? 180,
     pxPerIn: settings.px_per_in ?? 6.6,
     freeShipOver: settings.free_ship_over ?? 0,
-    localDeliveryFee: settings.local_delivery_fee ?? 5,
-    localZips: LOCAL_DELIVERY_ZIPS,
     shipRegions: SHIP_REGIONS,
     shipCountries: SHIP_COUNTRIES,
   };
